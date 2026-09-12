@@ -9,7 +9,6 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.security.MessageDigest
 import java.time.Instant
 
 object ConfigManager {
@@ -18,21 +17,29 @@ object ConfigManager {
     private val gson: Gson = GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create()
 
     @Volatile
-    var config: PackHelperConfig = PackHelperConfig()
+    var config: PackHelperConfig = PackHelperConfig.default()
         private set
 
-    private val configPath: Path
+    @Volatile
+    var validationIssues: List<ConfigIssue> = emptyList()
+        private set
+
+    val configPath: Path
         get() = FMLPaths.CONFIGDIR.get().resolve(CONFIG_FILE)
+    val configDirectory: Path
+        get() = FMLPaths.CONFIGDIR.get()
     private val statePath: Path
         get() = FMLPaths.CONFIGDIR.get().resolve(STATE_FILE)
 
+    @Synchronized
     fun load() {
         val path = configPath
         try {
             Files.createDirectories(path.parent)
             if (Files.notExists(path)) {
-                config = PackHelperConfig()
+                config = PackHelperConfig.default()
                 writeJson(path, config)
+                validationIssues = emptyList()
                 Cph.LOGGER.info("Created default CoolPackHelper config at {}", path)
                 return
             }
@@ -41,41 +48,52 @@ object ConfigManager {
                 gson.fromJson(it, PackHelperConfig::class.java)
             }
             if (loaded == null) {
-                Cph.LOGGER.error("CoolPackHelper config is empty: {}", path)
-                config = PackHelperConfig(requiredMods = emptyList())
+                config = PackHelperConfig.default().copy(mods = emptyList())
+                validationIssues = listOf(ConfigIssue("$CONFIG_FILE", "The config file is empty.", IssueSeverity.ERROR))
                 return
             }
 
             config = loaded
-            if ((loaded.schemaVersion ?: 0) > CONFIG_SCHEMA_VERSION) {
-                Cph.LOGGER.warn(
-                    "CoolPackHelper config schema {} is newer than supported schema {}",
-                    loaded.schemaVersion,
-                    CONFIG_SCHEMA_VERSION,
-                )
+            validationIssues = ConfigValidator.validate(loaded)
+            validationIssues.forEach { issue ->
+                val message = "CoolPackHelper config ${issue.severity.name.lowercase()} at ${issue.path}: ${issue.message}"
+                if (issue.severity == IssueSeverity.ERROR) Cph.LOGGER.error(message) else Cph.LOGGER.warn(message)
             }
         } catch (exception: Exception) {
-            config = PackHelperConfig(requiredMods = emptyList())
-            Cph.LOGGER.error("Could not read CoolPackHelper config at {}. The menu will not be shown.", path, exception)
+            config = PackHelperConfig.default().copy(mods = emptyList())
+            validationIssues = listOf(
+                ConfigIssue(
+                    CONFIG_FILE,
+                    "Could not parse the config: ${exception.message ?: exception.javaClass.simpleName}",
+                    IssueSeverity.ERROR,
+                )
+            )
+            Cph.LOGGER.error("Could not read CoolPackHelper config at {}", path, exception)
         }
     }
 
-    fun shouldShowOnce(): Boolean {
-        if (config.showOnlyOnce != true) return true
+    fun hasErrors(): Boolean = validationIssues.any { it.severity == IssueSeverity.ERROR }
 
-        val fingerprint = fingerprint(config)
-        val previous = readState()
-        if (previous?.lastShownFingerprint == fingerprint) return false
-
-        try {
-            writeJson(
-                statePath,
-                ShownState(lastShownFingerprint = fingerprint, shownAt = Instant.now().toString()),
-            )
-        } catch (exception: Exception) {
-            Cph.LOGGER.error("Could not save CoolPackHelper one-time display state", exception)
+    fun shouldShowMenu(): Boolean = when (config.resolvedShowPolicy()) {
+        ShowPolicy.UNTIL_RESOLVED -> true
+        ShowPolicy.NEVER -> false
+        ShowPolicy.ONCE_EVER -> {
+            val state = readState()
+            if (state?.everShown == true) false
+            else {
+                saveState((state ?: ShownState()).copy(everShown = true, shownAt = Instant.now().toString()))
+                true
+            }
         }
-        return true
+        ShowPolicy.ONCE_PER_PACK_VERSION -> {
+            val key = "${config.pack?.id.orEmpty()}:${config.pack?.version.orEmpty()}"
+            val state = readState()
+            if (state?.lastPackVersionKey == key) false
+            else {
+                saveState((state ?: ShownState()).copy(lastPackVersionKey = key, shownAt = Instant.now().toString()))
+                true
+            }
+        }
     }
 
     private fun readState(): ShownState? = try {
@@ -88,9 +106,12 @@ object ConfigManager {
         null
     }
 
-    private fun fingerprint(value: PackHelperConfig): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(gson.toJson(value).toByteArray(StandardCharsets.UTF_8))
-        return digest.joinToString("") { byte -> "%02x".format(byte) }
+    private fun saveState(state: ShownState) {
+        try {
+            writeJson(statePath, state)
+        } catch (exception: Exception) {
+            Cph.LOGGER.error("Could not save CoolPackHelper display state", exception)
+        }
     }
 
     private fun writeJson(path: Path, value: Any) {
@@ -105,7 +126,9 @@ object ConfigManager {
     }
 
     private data class ShownState(
-        var lastShownFingerprint: String? = null,
+        var schemaVersion: Int? = CONFIG_SCHEMA_VERSION,
+        var everShown: Boolean? = false,
+        var lastPackVersionKey: String? = null,
         var shownAt: String? = null,
     )
 }

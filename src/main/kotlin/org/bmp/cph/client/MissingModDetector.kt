@@ -2,27 +2,55 @@ package org.bmp.cph.client
 
 import net.neoforged.fml.ModList
 import net.neoforged.fml.loading.FMLPaths
+import org.apache.maven.artifact.versioning.VersionRange
 import org.bmp.cph.Cph
 import org.bmp.cph.config.RequiredMod
 import java.nio.file.Files
 
+enum class RequirementStatus {
+    MISSING,
+    WRONG_VERSION,
+}
+
+data class ModCheckResult(
+    val mod: RequiredMod,
+    val status: RequirementStatus,
+    val installedVersion: String? = null,
+)
+
 object MissingModDetector {
-    fun findMissing(entries: List<RequiredMod>): List<RequiredMod> {
+    fun findUnsatisfied(entries: List<RequiredMod>): List<ModCheckResult> {
+        val enabled = entries.filter { it.enabled != false }
+        if (enabled.isEmpty()) return emptyList()
+
         val fileNames = readModFileNames()
-        return entries.filter { it.enabled != false }.filterNot { isInstalled(it, fileNames) }
+        return enabled.mapNotNull { inspect(it, fileNames) }
+            .sortedBy { it.mod.resolvedCategory().ordinal }
     }
 
-    private fun isInstalled(entry: RequiredMod, fileNames: List<String>): Boolean {
-        val modIdMatches = entry.modId?.trim()?.takeIf { it.isNotEmpty() }?.let { ModList.get().isLoaded(it) } == true
-        val fileMatches = entry.filePattern?.trim()?.takeIf { it.isNotEmpty() }?.let { pattern ->
-            val regex = wildcardRegex(pattern)
-            fileNames.any(regex::matches)
-        } == true
-
-        if (entry.modId.isNullOrBlank() && entry.filePattern.isNullOrBlank()) {
-            Cph.LOGGER.warn("Required mod entry '{}' has neither modId nor filePattern and will be treated as missing", entry.name)
+    private fun inspect(entry: RequiredMod, fileNames: List<String>): ModCheckResult? {
+        val modId = entry.modId?.trim().orEmpty()
+        if (modId.isNotEmpty()) {
+            val container = ModList.get().getModContainerById(modId).orElse(null)
+                ?: return ModCheckResult(entry, RequirementStatus.MISSING)
+            val installedVersion = container.modInfo.version.toString()
+            val requestedRange = entry.versionRange?.trim().orEmpty()
+            if (requestedRange.isNotEmpty()) {
+                return try {
+                    if (VersionRange.createFromVersionSpec(requestedRange).containsVersion(container.modInfo.version)) null
+                    else ModCheckResult(entry, RequirementStatus.WRONG_VERSION, installedVersion)
+                } catch (exception: Exception) {
+                    Cph.LOGGER.error("Invalid version range '{}' for mod '{}'", requestedRange, modId, exception)
+                    ModCheckResult(entry, RequirementStatus.WRONG_VERSION, installedVersion)
+                }
+            }
+            return null
         }
-        return modIdMatches || fileMatches
+
+        val pattern = entry.filePattern?.trim().orEmpty()
+        if (pattern.isEmpty()) return ModCheckResult(entry, RequirementStatus.MISSING)
+        return if (fileNames.any(wildcardRegex(pattern)::matches)) null
+        else ModCheckResult(entry, RequirementStatus.MISSING)
     }
 
     private fun readModFileNames(): List<String> {

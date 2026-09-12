@@ -22,11 +22,17 @@ object ClientBootstrap {
         if (newScreen !is TitleScreen) return
 
         handledThisLaunch = true
-        val missing = MissingModDetector.findMissing(ConfigManager.config.requiredMods.orEmpty())
-        if (missing.isEmpty() || !ConfigManager.shouldShowOnce()) return
-
         val language = Minecraft.getInstance().languageManager.selected
         val text = MenuTextResolver.resolve(ConfigManager.config.menu, language)
+        if (ConfigManager.hasErrors()) {
+            event.newScreen = ConfigErrorScreen(newScreen, ConfigManager.validationIssues, text)
+            Cph.LOGGER.warn("Showing CoolPackHelper config error screen")
+            return
+        }
+
+        val missing = MissingModDetector.findUnsatisfied(ConfigManager.config.activeModEntries())
+        if (missing.isEmpty() || !ConfigManager.shouldShowMenu()) return
+
         event.newScreen = MissingModsScreen(newScreen, missing, text)
         Cph.LOGGER.info("Showing missing mods menu for {} mod(s)", missing.size)
     }
