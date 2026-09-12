@@ -15,10 +15,11 @@ import org.bmp.cph.config.ResolvedMenuText
 import java.nio.file.Files
 
 class ConfigErrorScreen(
-    private val parent: Screen,
+    parent: Screen,
     private val issues: List<ConfigIssue>,
     private val text: ResolvedMenuText,
-) : Screen(Component.literal(text.configErrorTitle)) {
+    private val markPolicyOnResolvedScreen: Boolean = false,
+) : AnimatedScreen(Component.literal(text.configErrorTitle), parent) {
     override fun init() {
         val wide = width >= 560
         val listTop = 52
@@ -31,6 +32,7 @@ class ConfigErrorScreen(
             listTop,
             (listWidth - 18).coerceIn(100, 720),
             issues,
+            text,
         )
         list.x = 8
         addRenderableWidget(list)
@@ -39,17 +41,12 @@ class ConfigErrorScreen(
 
     override fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         super.render(guiGraphics, mouseX, mouseY, partialTick)
-        guiGraphics.drawCenteredString(font, title, width / 2, 12, 0xFFE46A6A.toInt())
+        val offset = slideOffset()
+        guiGraphics.drawCenteredString(font, title, width / 2, 12 + offset, animatedColor(0xE46A6A))
         font.split(Component.literal(text.configErrorDescription), (width - 32).coerceAtLeast(40)).take(2).forEachIndexed { index, line ->
-            guiGraphics.drawCenteredString(font, line, width / 2, 29 + index * 10, 0xC8C8C8)
+            guiGraphics.drawCenteredString(font, line, width / 2, 29 + index * 10 + offset, animatedColor(0xC8C8C8))
         }
     }
-
-    override fun onClose() {
-        minecraft?.setScreen(parent)
-    }
-
-    override fun isPauseScreen(): Boolean = false
 
     private fun addFooterButtons(wide: Boolean) {
         if (wide) {
@@ -86,13 +83,13 @@ class ConfigErrorScreen(
         val language = Minecraft.getInstance().languageManager.selected
         val refreshedText = MenuTextResolver.resolve(ConfigManager.config.menu, language)
         if (ConfigManager.hasErrors()) {
-            minecraft?.setScreen(ConfigErrorScreen(parent, ConfigManager.validationIssues, refreshedText))
+            minecraft?.setScreen(ConfigErrorScreen(previousScreen, ConfigManager.validationIssues, refreshedText, markPolicyOnResolvedScreen))
             return
         }
 
         val missing = MissingModDetector.findUnsatisfied(ConfigManager.config.activeModEntries())
         if (missing.isEmpty()) {
-            minecraft?.setScreen(parent)
+            minecraft?.setScreen(previousScreen)
             minecraft?.let {
                 SystemToast.add(
                     it.toasts,
@@ -102,7 +99,7 @@ class ConfigErrorScreen(
                 )
             }
         } else {
-            minecraft?.setScreen(MissingModsScreen(parent, missing, refreshedText))
+            minecraft?.setScreen(MissingModsScreen(previousScreen, missing, refreshedText, markPolicyOnClose = markPolicyOnResolvedScreen))
         }
     }
 }

@@ -2,6 +2,7 @@ package org.bmp.cph.config
 
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonParser
 import net.neoforged.fml.loading.FMLPaths
 import org.bmp.cph.Cph
 import java.nio.charset.StandardCharsets
@@ -13,6 +14,7 @@ import java.time.Instant
 
 object ConfigManager {
     private const val CONFIG_FILE = "coolpackhelper.json"
+    private const val SCHEMA_FILE = "coolpackhelper.schema.json"
     private const val STATE_FILE = "coolpackhelper-state.json"
     private val gson: Gson = GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create()
 
@@ -29,6 +31,8 @@ object ConfigManager {
     val configDirectory: Path
         get() = FMLPaths.CONFIGDIR.get()
     private val statePath: Path
+        get() = FMLPaths.GAMEDIR.get().resolve("local").resolve("coolpackhelper").resolve("state.json")
+    private val legacyStatePath: Path
         get() = FMLPaths.CONFIGDIR.get().resolve(STATE_FILE)
 
     @Synchronized
@@ -36,6 +40,7 @@ object ConfigManager {
         val path = configPath
         try {
             Files.createDirectories(path.parent)
+            writeSchemaFile()
             if (Files.notExists(path)) {
                 config = PackHelperConfig.default()
                 writeJson(path, config)
@@ -44,19 +49,20 @@ object ConfigManager {
                 return
             }
 
-            val loaded = Files.newBufferedReader(path, StandardCharsets.UTF_8).use {
-                gson.fromJson(it, PackHelperConfig::class.java)
+            val root = Files.newBufferedReader(path, StandardCharsets.UTF_8).use {
+                JsonParser.parseReader(it)
             }
+            val loaded = gson.fromJson(root, PackHelperConfig::class.java)
             if (loaded == null) {
                 config = PackHelperConfig.default().copy(mods = emptyList())
-                validationIssues = listOf(ConfigIssue("$CONFIG_FILE", "The config file is empty.", IssueSeverity.ERROR))
+                validationIssues = listOf(ConfigIssue(CONFIG_FILE, "empty_config", IssueSeverity.ERROR))
                 return
             }
 
             config = loaded
-            validationIssues = ConfigValidator.validate(loaded)
+            validationIssues = ConfigValidator.validateStructure(root) + ConfigValidator.validate(loaded)
             validationIssues.forEach { issue ->
-                val message = "CoolPackHelper config ${issue.severity.name.lowercase()} at ${issue.path}: ${issue.message}"
+                val message = "CoolPackHelper config ${issue.severity.name.lowercase()} at ${issue.path}: ${issue.code} ${issue.arguments}"
                 if (issue.severity == IssueSeverity.ERROR) Cph.LOGGER.error(message) else Cph.LOGGER.warn(message)
             }
         } catch (exception: Exception) {
@@ -64,8 +70,9 @@ object ConfigManager {
             validationIssues = listOf(
                 ConfigIssue(
                     CONFIG_FILE,
-                    "Could not parse the config: ${exception.message ?: exception.javaClass.simpleName}",
+                    "parse_error",
                     IssueSeverity.ERROR,
+                    mapOf("details" to (exception.message ?: exception.javaClass.simpleName)),
                 )
             )
             Cph.LOGGER.error("Could not read CoolPackHelper config at {}", path, exception)
@@ -79,31 +86,53 @@ object ConfigManager {
         ShowPolicy.NEVER -> false
         ShowPolicy.ONCE_EVER -> {
             val state = readState()
-            if (state?.everShown == true) false
-            else {
-                saveState((state ?: ShownState()).copy(everShown = true, shownAt = Instant.now().toString()))
-                true
-            }
+            val packId = config.pack?.id?.takeIf { it.isNotBlank() } ?: "default"
+            !state?.shownPackIds.orEmpty().contains(packId)
         }
         ShowPolicy.ONCE_PER_PACK_VERSION -> {
             val key = "${config.pack?.id.orEmpty()}:${config.pack?.version.orEmpty()}"
             val state = readState()
-            if (state?.lastPackVersionKey == key) false
-            else {
-                saveState((state ?: ShownState()).copy(lastPackVersionKey = key, shownAt = Instant.now().toString()))
-                true
-            }
+            !state?.shownPackVersions.orEmpty().contains(key)
         }
     }
 
-    private fun readState(): ShownState? = try {
-        if (Files.notExists(statePath)) null
-        else Files.newBufferedReader(statePath, StandardCharsets.UTF_8).use {
-            gson.fromJson(it, ShownState::class.java)
+    @Synchronized
+    fun markMenuShown() {
+        val state = readState() ?: ShownState()
+        val updated = when (config.resolvedShowPolicy()) {
+            ShowPolicy.ONCE_EVER -> {
+                val packId = config.pack?.id?.takeIf { it.isNotBlank() } ?: "default"
+                state.copy(shownPackIds = state.shownPackIds.orEmpty() + packId, shownAt = Instant.now().toString())
+            }
+            ShowPolicy.ONCE_PER_PACK_VERSION -> {
+                val key = "${config.pack?.id.orEmpty()}:${config.pack?.version.orEmpty()}"
+                state.copy(shownPackVersions = state.shownPackVersions.orEmpty() + key, shownAt = Instant.now().toString())
+            }
+            else -> return
         }
-    } catch (exception: Exception) {
-        Cph.LOGGER.warn("Could not read CoolPackHelper state; the menu will be shown again", exception)
-        null
+        saveState(updated)
+    }
+
+    private fun readState(): ShownState? {
+        return try {
+            val source = when {
+                Files.exists(statePath) -> statePath
+                Files.exists(legacyStatePath) -> legacyStatePath
+                else -> null
+            } ?: return null
+            val loaded = Files.newBufferedReader(source, StandardCharsets.UTF_8).use {
+                gson.fromJson(it, ShownState::class.java)
+            } ?: return null
+            loaded.copy(
+                shownPackIds = loaded.shownPackIds.orEmpty() + if (loaded.everShown == true) {
+                    setOf(config.pack?.id?.takeIf { it.isNotBlank() } ?: "default")
+                } else emptySet(),
+                shownPackVersions = loaded.shownPackVersions.orEmpty() + listOfNotNull(loaded.lastPackVersionKey),
+            )
+        } catch (exception: Exception) {
+            Cph.LOGGER.warn("Could not read CoolPackHelper state; the menu will be shown again", exception)
+            null
+        }
     }
 
     private fun saveState(state: ShownState) {
@@ -125,8 +154,18 @@ object ConfigManager {
         }
     }
 
+    private fun writeSchemaFile() {
+        val target = configDirectory.resolve(SCHEMA_FILE)
+        ConfigManager::class.java.getResourceAsStream("/$SCHEMA_FILE")?.use { input ->
+            Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING)
+        } ?: Cph.LOGGER.warn("Bundled CoolPackHelper JSON schema is missing")
+    }
+
     private data class ShownState(
         var schemaVersion: Int? = CONFIG_SCHEMA_VERSION,
+        var shownPackIds: Set<String>? = emptySet(),
+        var shownPackVersions: Set<String>? = emptySet(),
+        // Schema v2 compatibility.
         var everShown: Boolean? = false,
         var lastPackVersionKey: String? = null,
         var shownAt: String? = null,

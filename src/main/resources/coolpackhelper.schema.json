@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "coolpackhelper.schema.json",
+  "title": "CoolPackHelper configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "pack": { "$ref": "#/$defs/pack" },
+    "showPolicy": {
+      "enum": ["UNTIL_RESOLVED", "ONCE_PER_PACK_VERSION", "ONCE_EVER", "NEVER"]
+    },
+    "menu": { "$ref": "#/$defs/menu" },
+    "mods": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/mod" }
+    },
+    "showOnlyOnce": { "type": "boolean", "deprecated": true },
+    "requiredMods": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/mod" },
+      "deprecated": true
+    }
+  },
+  "required": ["schemaVersion", "showPolicy", "menu", "mods"],
+  "$defs": {
+    "pack": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "language": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["GAME", "FIXED"] },
+        "fixedLanguage": { "type": "string" },
+        "fallbackLanguage": { "type": "string", "minLength": 1 }
+      }
+    },
+    "menu": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "language": { "$ref": "#/$defs/language" },
+        "defaultLanguage": { "type": "string", "deprecated": true },
+        "translations": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/menuText" }
+        }
+      }
+    },
+    "menuText": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "summary": { "type": "string" },
+        "requiredLabel": { "type": "string" },
+        "recommendedLabel": { "type": "string" },
+        "missingStatus": { "type": "string" },
+        "wrongVersionStatus": { "type": "string" },
+        "downloadButton": { "type": "string" },
+        "chooseSourceButton": { "type": "string" },
+        "sourcesTitle": { "type": "string" },
+        "continueButton": { "type": "string" },
+        "recheckButton": { "type": "string" },
+        "openModsFolderButton": { "type": "string" },
+        "openConfigFolderButton": { "type": "string" },
+        "previousButton": { "type": "string" },
+        "nextButton": { "type": "string" },
+        "pageIndicator": { "type": "string" },
+        "configErrorTitle": { "type": "string" },
+        "configErrorDescription": { "type": "string" },
+        "allResolvedMessage": { "type": "string" },
+        "allTab": { "type": "string" },
+        "requiredTab": { "type": "string" },
+        "recommendedTab": { "type": "string" },
+        "detailsButton": { "type": "string" },
+        "detailsTitle": { "type": "string" },
+        "modIdLabel": { "type": "string" },
+        "installedVersionLabel": { "type": "string" },
+        "requiredVersionLabel": { "type": "string" },
+        "backButton": { "type": "string" },
+        "emptyTabMessage": { "type": "string" },
+        "validationMessages": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string" },
+        "url": { "type": "string", "format": "uri", "pattern": "^https?://" }
+      },
+      "required": ["url"]
+    },
+    "mod": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "category": { "enum": ["REQUIRED", "RECOMMENDED"] },
+        "name": { "type": "string" },
+        "modId": { "type": "string" },
+        "versionRange": { "type": "string" },
+        "filePattern": { "type": "string" },
+        "description": { "type": "string" },
+        "descriptions": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "links": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/link" }
+        },
+        "downloadUrl": { "type": "string", "format": "uri", "deprecated": true }
+      }
+    }
+  }
+}

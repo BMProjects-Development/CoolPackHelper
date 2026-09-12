@@ -1,10 +1,13 @@
 package org.bmp.cph.config
 
+import com.google.gson.annotations.SerializedName
 import java.net.URI
 
-const val CONFIG_SCHEMA_VERSION = 2
+const val CONFIG_SCHEMA_VERSION = 3
 
 data class PackHelperConfig(
+    @SerializedName("\$schema")
+    var schemaUrl: String? = null,
     var schemaVersion: Int? = null,
     var pack: PackInfo? = null,
     var showPolicy: String? = null,
@@ -16,6 +19,7 @@ data class PackHelperConfig(
 ) {
     companion object {
         fun default() = PackHelperConfig(
+            schemaUrl = "coolpackhelper.schema.json",
             schemaVersion = CONFIG_SCHEMA_VERSION,
             pack = PackInfo(id = "my-pack", name = "My Modpack", version = "1.0.0"),
             showPolicy = ShowPolicy.UNTIL_RESOLVED.name,
@@ -49,9 +53,22 @@ enum class ModCategory {
     RECOMMENDED,
 }
 
+enum class LanguageMode {
+    GAME,
+    FIXED,
+}
+
+data class LanguageConfig(
+    var mode: String? = LanguageMode.GAME.name,
+    var fixedLanguage: String? = "ru_ru",
+    var fallbackLanguage: String? = "en_us",
+)
+
 data class MenuConfig(
-    var defaultLanguage: String? = "en_us",
+    var language: LanguageConfig? = LanguageConfig(),
     var translations: Map<String, MenuText>? = defaultTranslations(),
+    // Schema v1/v2 compatibility. New configs use language.fallbackLanguage.
+    var defaultLanguage: String? = null,
 ) {
     companion object {
         fun default() = MenuConfig()
@@ -79,6 +96,17 @@ data class MenuText(
     var configErrorTitle: String? = null,
     var configErrorDescription: String? = null,
     var allResolvedMessage: String? = null,
+    var allTab: String? = null,
+    var requiredTab: String? = null,
+    var recommendedTab: String? = null,
+    var detailsButton: String? = null,
+    var detailsTitle: String? = null,
+    var modIdLabel: String? = null,
+    var installedVersionLabel: String? = null,
+    var requiredVersionLabel: String? = null,
+    var backButton: String? = null,
+    var emptyTabMessage: String? = null,
+    var validationMessages: Map<String, String>? = null,
 )
 
 data class RequiredMod(
@@ -130,6 +158,8 @@ data class DownloadLink(
 }
 
 data class ResolvedMenuText(
+    val languageCode: String,
+    val fallbackLanguage: String,
     val title: String,
     val description: String,
     val summary: String,
@@ -150,6 +180,17 @@ data class ResolvedMenuText(
     val configErrorTitle: String,
     val configErrorDescription: String,
     val allResolvedMessage: String,
+    val allTab: String,
+    val requiredTab: String,
+    val recommendedTab: String,
+    val detailsButton: String,
+    val detailsTitle: String,
+    val modIdLabel: String,
+    val installedVersionLabel: String,
+    val requiredVersionLabel: String,
+    val backButton: String,
+    val emptyTabMessage: String,
+    val validationMessages: Map<String, String>,
 )
 
 private fun defaultTranslations(): Map<String, MenuText> = linkedMapOf(
@@ -174,6 +215,17 @@ private fun defaultTranslations(): Map<String, MenuText> = linkedMapOf(
         configErrorTitle = "CoolPackHelper config error",
         configErrorDescription = "Fix the following settings and click Check again.",
         allResolvedMessage = "All configured mods are installed.",
+        allTab = "All",
+        requiredTab = "Required",
+        recommendedTab = "Recommended",
+        detailsButton = "Details",
+        detailsTitle = "About {mod}",
+        modIdLabel = "Mod ID: {value}",
+        installedVersionLabel = "Installed version: {value}",
+        requiredVersionLabel = "Required version: {value}",
+        backButton = "Back",
+        emptyTabMessage = "There are no mods in this section.",
+        validationMessages = englishValidationMessages(),
     ),
     "ru_ru" to MenuText(
         title = "Требования сборки",
@@ -196,6 +248,17 @@ private fun defaultTranslations(): Map<String, MenuText> = linkedMapOf(
         configErrorTitle = "Ошибка конфига CoolPackHelper",
         configErrorDescription = "Исправьте настройки ниже и нажмите «Проверить снова».",
         allResolvedMessage = "Все настроенные моды установлены.",
+        allTab = "Все",
+        requiredTab = "Обязательные",
+        recommendedTab = "Рекомендуемые",
+        detailsButton = "Подробнее",
+        detailsTitle = "О моде {mod}",
+        modIdLabel = "ID мода: {value}",
+        installedVersionLabel = "Установленная версия: {value}",
+        requiredVersionLabel = "Требуемая версия: {value}",
+        backButton = "Назад",
+        emptyTabMessage = "В этом разделе нет модов.",
+        validationMessages = russianValidationMessages(),
     ),
 )
 
@@ -234,46 +297,125 @@ private fun defaultExampleMods(): List<RequiredMod> = listOf(
 object MenuTextResolver {
     private val builtIn = MenuConfig.default()
 
-    fun resolve(menu: MenuConfig?, languageCode: String): ResolvedMenuText {
+    fun resolve(menu: MenuConfig?, gameLanguageCode: String): ResolvedMenuText {
         val configured = menu ?: builtIn
         val translations = configured.translations.orEmpty()
-        val defaultLanguage = configured.defaultLanguage?.lowercase().orEmpty()
-        val selected = languageCandidates(languageCode, defaultLanguage).firstNotNullOfOrNull { candidate ->
-            translations.entries.firstOrNull { it.key.equals(candidate, ignoreCase = true) }?.value
+        val languageSettings = configured.language
+        val mode = LanguageMode.entries.firstOrNull { it.name.equals(languageSettings?.mode, ignoreCase = true) }
+            ?: LanguageMode.GAME
+        val selectedLanguage = if (mode == LanguageMode.FIXED) {
+            languageSettings?.fixedLanguage?.takeIf { it.isNotBlank() } ?: gameLanguageCode
+        } else {
+            gameLanguageCode
+        }.lowercase()
+        val fallbackLanguage = languageSettings?.fallbackLanguage?.takeIf { it.isNotBlank() }
+            ?: configured.defaultLanguage?.takeIf { it.isNotBlank() }
+            ?: "en_us"
+        val candidates = languageCandidates(selectedLanguage, fallbackLanguage)
+        val sources = buildList {
+            candidates.forEach { candidate ->
+                translations.entries.firstOrNull { it.key.equals(candidate, ignoreCase = true) }?.value?.let(::add)
+            }
+            candidates.forEach { candidate ->
+                builtIn.translations.orEmpty().entries.firstOrNull { it.key.equals(candidate, ignoreCase = true) }?.value?.let(::add)
+            }
+            builtIn.translations.orEmpty()["en_us"]?.let(::add)
+        }.distinct()
+
+        fun pick(fallback: String, selector: (MenuText) -> String?): String =
+            sources.firstNotNullOfOrNull { selector(it)?.takeIf(String::isNotBlank) } ?: fallback
+
+        val validationCodes = englishValidationMessages().keys + russianValidationMessages().keys +
+            sources.flatMap { it.validationMessages.orEmpty().keys }
+        val validationMessages = validationCodes.associateWith { code ->
+            sources.firstNotNullOfOrNull { it.validationMessages.orEmpty()[code]?.takeIf(String::isNotBlank) }
+                ?: englishValidationMessages()[code]
+                ?: code
         }
-        val fallback = translations.entries.firstOrNull { it.key.equals(defaultLanguage, ignoreCase = true) }?.value
-            ?: translations.entries.firstOrNull { it.key.equals("en_us", ignoreCase = true) }?.value
-        val builtInSelected = languageCandidates(languageCode, defaultLanguage).firstNotNullOfOrNull { candidate ->
-            builtIn.translations.orEmpty().entries.firstOrNull { it.key.equals(candidate, ignoreCase = true) }?.value
-        }
-        val builtInFallback = builtIn.translations.orEmpty()["en_us"] ?: MenuText()
 
         return ResolvedMenuText(
-            title = value(selected?.title, fallback?.title, builtInSelected?.title, builtInFallback.title, "Modpack requirements"),
-            description = value(selected?.description, fallback?.description, builtInSelected?.description, builtInFallback.description, "Some mods are missing or have an unsupported version."),
-            summary = value(selected?.summary, fallback?.summary, builtInSelected?.summary, builtInFallback.summary, "Required: {required} · Recommended: {recommended}"),
-            requiredLabel = value(selected?.requiredLabel, fallback?.requiredLabel, builtInSelected?.requiredLabel, builtInFallback.requiredLabel, "Required"),
-            recommendedLabel = value(selected?.recommendedLabel, fallback?.recommendedLabel, builtInSelected?.recommendedLabel, builtInFallback.recommendedLabel, "Recommended"),
-            missingStatus = value(selected?.missingStatus, fallback?.missingStatus, builtInSelected?.missingStatus, builtInFallback.missingStatus, "Not installed"),
-            wrongVersionStatus = value(selected?.wrongVersionStatus, fallback?.wrongVersionStatus, builtInSelected?.wrongVersionStatus, builtInFallback.wrongVersionStatus, "Installed: {installed} · Required: {required}"),
-            downloadButton = value(selected?.downloadButton, fallback?.downloadButton, builtInSelected?.downloadButton, builtInFallback.downloadButton, "Download"),
-            chooseSourceButton = value(selected?.chooseSourceButton, fallback?.chooseSourceButton, builtInSelected?.chooseSourceButton, builtInFallback.chooseSourceButton, "Download · {count} sources"),
-            sourcesTitle = value(selected?.sourcesTitle, fallback?.sourcesTitle, builtInSelected?.sourcesTitle, builtInFallback.sourcesTitle, "Download {mod}"),
-            continueButton = value(selected?.continueButton, fallback?.continueButton, builtInSelected?.continueButton, builtInFallback.continueButton, "Continue"),
-            recheckButton = value(selected?.recheckButton, fallback?.recheckButton, builtInSelected?.recheckButton, builtInFallback.recheckButton, "Check again"),
-            openModsFolderButton = value(selected?.openModsFolderButton, fallback?.openModsFolderButton, builtInSelected?.openModsFolderButton, builtInFallback.openModsFolderButton, "Open mods folder"),
-            openConfigFolderButton = value(selected?.openConfigFolderButton, fallback?.openConfigFolderButton, builtInSelected?.openConfigFolderButton, builtInFallback.openConfigFolderButton, "Open config folder"),
-            previousButton = value(selected?.previousButton, fallback?.previousButton, builtInSelected?.previousButton, builtInFallback.previousButton, "Previous"),
-            nextButton = value(selected?.nextButton, fallback?.nextButton, builtInSelected?.nextButton, builtInFallback.nextButton, "Next"),
-            pageIndicator = value(selected?.pageIndicator, fallback?.pageIndicator, builtInSelected?.pageIndicator, builtInFallback.pageIndicator, "Page {current} of {total}"),
-            configErrorTitle = value(selected?.configErrorTitle, fallback?.configErrorTitle, builtInSelected?.configErrorTitle, builtInFallback.configErrorTitle, "CoolPackHelper config error"),
-            configErrorDescription = value(selected?.configErrorDescription, fallback?.configErrorDescription, builtInSelected?.configErrorDescription, builtInFallback.configErrorDescription, "Fix the following settings and click Check again."),
-            allResolvedMessage = value(selected?.allResolvedMessage, fallback?.allResolvedMessage, builtInSelected?.allResolvedMessage, builtInFallback.allResolvedMessage, "All configured mods are installed."),
+            languageCode = selectedLanguage,
+            fallbackLanguage = fallbackLanguage.lowercase(),
+            title = pick("Modpack requirements") { it.title },
+            description = pick("Some mods are missing or have an unsupported version.") { it.description },
+            summary = pick("Required: {required} · Recommended: {recommended}") { it.summary },
+            requiredLabel = pick("Required") { it.requiredLabel },
+            recommendedLabel = pick("Recommended") { it.recommendedLabel },
+            missingStatus = pick("Not installed") { it.missingStatus },
+            wrongVersionStatus = pick("Installed: {installed} · Required: {required}") { it.wrongVersionStatus },
+            downloadButton = pick("Download") { it.downloadButton },
+            chooseSourceButton = pick("Download · {count} sources") { it.chooseSourceButton },
+            sourcesTitle = pick("Download {mod}") { it.sourcesTitle },
+            continueButton = pick("Continue") { it.continueButton },
+            recheckButton = pick("Check again") { it.recheckButton },
+            openModsFolderButton = pick("Open mods folder") { it.openModsFolderButton },
+            openConfigFolderButton = pick("Open config folder") { it.openConfigFolderButton },
+            previousButton = pick("Previous") { it.previousButton },
+            nextButton = pick("Next") { it.nextButton },
+            pageIndicator = pick("Page {current} of {total}") { it.pageIndicator },
+            configErrorTitle = pick("CoolPackHelper config error") { it.configErrorTitle },
+            configErrorDescription = pick("Fix the following settings and click Check again.") { it.configErrorDescription },
+            allResolvedMessage = pick("All configured mods are installed.") { it.allResolvedMessage },
+            allTab = pick("All") { it.allTab },
+            requiredTab = pick("Required") { it.requiredTab },
+            recommendedTab = pick("Recommended") { it.recommendedTab },
+            detailsButton = pick("Details") { it.detailsButton },
+            detailsTitle = pick("About {mod}") { it.detailsTitle },
+            modIdLabel = pick("Mod ID: {value}") { it.modIdLabel },
+            installedVersionLabel = pick("Installed version: {value}") { it.installedVersionLabel },
+            requiredVersionLabel = pick("Required version: {value}") { it.requiredVersionLabel },
+            backButton = pick("Back") { it.backButton },
+            emptyTabMessage = pick("There are no mods in this section.") { it.emptyTabMessage },
+            validationMessages = validationMessages,
         )
     }
-
-    private fun value(vararg candidates: String?): String = candidates.firstNotNullOf { it?.takeIf(String::isNotBlank) }
 }
+
+private fun englishValidationMessages(): Map<String, String> = mapOf(
+    "schema_newer" to "Schema {value} is newer than supported schema {supported}.",
+    "unknown_field" to "Unknown field '{field}'. Check its spelling.",
+    "both_mod_lists" to "Use either 'mods' or legacy 'requiredMods', not both.",
+    "unknown_policy" to "Unknown display policy '{value}'.",
+    "unknown_language_mode" to "Unknown language mode '{value}'.",
+    "fixed_language_required" to "Select fixedLanguage when language mode is FIXED.",
+    "pack_id_required" to "A pack id is required by ONCE_PER_PACK_VERSION.",
+    "pack_version_required" to "A pack version is required by ONCE_PER_PACK_VERSION.",
+    "missing_translation" to "No translation exists for '{value}'; fallback text will be used.",
+    "empty_entry" to "This entry has no name or detector.",
+    "missing_detector" to "Set modId or filePattern.",
+    "unknown_category" to "Unknown category '{value}'.",
+    "duplicate_mod_id" to "Duplicate mod id '{value}'.",
+    "version_requires_mod_id" to "Version checks require modId; this range will be ignored.",
+    "invalid_version_range" to "Invalid version range '{value}': {details}",
+    "missing_links" to "Add at least one download link.",
+    "invalid_url" to "Only a valid HTTP or HTTPS URL is allowed.",
+    "missing_link_label" to "The website domain will be used as the link label.",
+    "empty_config" to "The config file is empty.",
+    "parse_error" to "Could not parse the config: {details}",
+)
+
+private fun russianValidationMessages(): Map<String, String> = mapOf(
+    "schema_newer" to "Версия схемы {value} новее поддерживаемой версии {supported}.",
+    "unknown_field" to "Неизвестное поле '{field}'. Проверьте написание.",
+    "both_mod_lists" to "Используйте либо 'mods', либо устаревшее 'requiredMods', но не оба поля.",
+    "unknown_policy" to "Неизвестная политика показа '{value}'.",
+    "unknown_language_mode" to "Неизвестный режим языка '{value}'.",
+    "fixed_language_required" to "Укажите fixedLanguage для режима FIXED.",
+    "pack_id_required" to "Для ONCE_PER_PACK_VERSION требуется ID сборки.",
+    "pack_version_required" to "Для ONCE_PER_PACK_VERSION требуется версия сборки.",
+    "missing_translation" to "Перевод для '{value}' отсутствует; будет использован резервный текст.",
+    "empty_entry" to "У записи отсутствуют название и способ обнаружения.",
+    "missing_detector" to "Укажите modId или filePattern.",
+    "unknown_category" to "Неизвестная категория '{value}'.",
+    "duplicate_mod_id" to "ID мода '{value}' указан несколько раз.",
+    "version_requires_mod_id" to "Для проверки версии требуется modId; диапазон будет проигнорирован.",
+    "invalid_version_range" to "Некорректный диапазон версий '{value}': {details}",
+    "missing_links" to "Добавьте хотя бы одну ссылку для скачивания.",
+    "invalid_url" to "Разрешены только корректные HTTP- или HTTPS-ссылки.",
+    "missing_link_label" to "В качестве подписи будет использован домен сайта.",
+    "empty_config" to "Файл конфигурации пуст.",
+    "parse_error" to "Не удалось прочитать конфиг: {details}",
+)
 
 internal fun languageCandidates(languageCode: String, defaultLanguage: String): List<String> = buildList {
     val normalized = languageCode.lowercase()

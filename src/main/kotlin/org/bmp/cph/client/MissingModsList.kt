@@ -9,7 +9,6 @@ import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.components.events.GuiEventListener
 import net.minecraft.client.gui.narration.NarratableEntry
 import net.minecraft.network.chat.Component
-import org.bmp.cph.config.MenuConfig
 import org.bmp.cph.config.ModCategory
 import org.bmp.cph.config.ResolvedMenuText
 
@@ -22,9 +21,10 @@ class MissingModsList(
     private val compact: Boolean,
     results: List<ModCheckResult>,
     private val text: ResolvedMenuText,
-    private val menuConfig: MenuConfig?,
     private val languageCode: String,
     private val onDownload: (ModCheckResult) -> Unit,
+    private val onDetails: (ModCheckResult) -> Unit,
+    private val animationProgress: () -> Float,
 ) : ContainerObjectSelectionList<MissingModsList.ModEntry>(
     minecraft,
     width,
@@ -49,10 +49,14 @@ class MissingModsList(
             .tooltip(Tooltip.create(Component.literal(links.joinToString("\n") { it.displayLabel() })))
             .bounds(0, 0, 160, 20)
             .build()
+        private val detailsButton = Button.builder(Component.literal(text.detailsButton)) { onDetails(result) }
+            .createNarration { Component.literal(narrationText()) }
+            .bounds(0, 0, 160, 20)
+            .build()
 
-        override fun children(): List<GuiEventListener> = listOf(downloadButton)
+        override fun children(): List<GuiEventListener> = listOf(detailsButton, downloadButton)
 
-        override fun narratables(): List<NarratableEntry> = listOf(downloadButton)
+        override fun narratables(): List<NarratableEntry> = listOf(detailsButton, downloadButton)
 
         override fun render(
             guiGraphics: GuiGraphics,
@@ -66,18 +70,19 @@ class MissingModsList(
             hovered: Boolean,
             partialTick: Float,
         ) {
+            val animatedTop = top + ((1f - animationProgress()) * 10).toInt()
             val category = result.mod.resolvedCategory()
             val accent = if (category == ModCategory.REQUIRED) 0xFFE46A6A.toInt() else 0xFFE0B85B.toInt()
             val background = if (hovered) 0xAA303030.toInt() else 0x88303030.toInt()
-            guiGraphics.fill(left, top, left + width, top + height, background)
-            guiGraphics.fill(left, top, left + 2, top + height, accent)
+            guiGraphics.fill(left, animatedTop, left + width, animatedTop + height, background)
+            guiGraphics.fill(left, animatedTop, left + 2, animatedTop + height, accent)
 
             val categoryLabel = if (category == ModCategory.REQUIRED) text.requiredLabel else text.recommendedLabel
             val categoryWidth = font.width(categoryLabel)
             val nameWidth = (width - categoryWidth - 22).coerceAtLeast(30)
             val name = font.plainSubstrByWidth(result.mod.displayName(), nameWidth)
-            guiGraphics.drawString(font, name, left + 7, top + 3, 0xFFFFFF, false)
-            guiGraphics.drawString(font, categoryLabel, left + width - categoryWidth - 7, top + 3, accent, false)
+            guiGraphics.drawString(font, name, left + 7, animatedTop + 3, 0xFFFFFF, false)
+            guiGraphics.drawString(font, categoryLabel, left + width - categoryWidth - 7, animatedTop + 3, accent, false)
 
             val status = when (result.status) {
                 RequirementStatus.MISSING -> text.missingStatus
@@ -89,23 +94,27 @@ class MissingModsList(
                 font,
                 font.plainSubstrByWidth(status, (width - 14).coerceAtLeast(30)),
                 left + 7,
-                top + 15,
+                animatedTop + 15,
                 0xC8C8C8,
                 false,
             )
 
             if (!compact) {
-                val defaultLanguage = menuConfig?.defaultLanguage.orEmpty()
-                val description = result.mod.localizedDescription(languageCode, defaultLanguage)
+                val description = result.mod.localizedDescription(languageCode, text.fallbackLanguage)
                 font.split(Component.literal(description), (width - 14).coerceAtLeast(30)).take(2).forEachIndexed { line, value ->
-                    guiGraphics.drawString(font, value, left + 7, top + 29 + line * 10, 0xAFAFAF, false)
+                    guiGraphics.drawString(font, value, left + 7, animatedTop + 29 + line * 10, 0xAFAFAF, false)
                 }
             }
 
-            val buttonWidth = (width - 14).coerceAtMost(190)
+            val totalButtonWidth = (width - 14).coerceAtMost(390)
+            val buttonWidth = (totalButtonWidth - 4) / 2
             downloadButton.width = buttonWidth
-            downloadButton.x = left + width - buttonWidth - 7
-            downloadButton.y = top + if (compact) 28 else 56
+            detailsButton.width = buttonWidth
+            detailsButton.x = left + width - totalButtonWidth - 7
+            detailsButton.y = animatedTop + if (compact) 28 else 56
+            downloadButton.x = detailsButton.x + buttonWidth + 4
+            downloadButton.y = detailsButton.y
+            detailsButton.render(guiGraphics, mouseX, mouseY, partialTick)
             downloadButton.render(guiGraphics, mouseX, mouseY, partialTick)
         }
 
@@ -113,6 +122,15 @@ class MissingModsList(
             text.downloadButton.replace("{mod}", result.mod.displayName())
         } else {
             text.chooseSourceButton.replace("{count}", links.size.toString())
+        }
+
+        private fun narrationText(): String {
+            val category = if (result.mod.resolvedCategory() == ModCategory.REQUIRED) text.requiredLabel else text.recommendedLabel
+            val status = if (result.status == RequirementStatus.MISSING) text.missingStatus else text.wrongVersionStatus
+                .replace("{installed}", result.installedVersion.orEmpty())
+                .replace("{required}", result.mod.versionRange.orEmpty())
+            val description = result.mod.localizedDescription(languageCode, text.fallbackLanguage)
+            return listOf(result.mod.displayName(), category, status, description).filter(String::isNotBlank).joinToString(". ")
         }
     }
 }

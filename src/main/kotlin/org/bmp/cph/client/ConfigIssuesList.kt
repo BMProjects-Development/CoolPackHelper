@@ -7,6 +7,7 @@ import net.minecraft.client.gui.components.ObjectSelectionList
 import net.minecraft.network.chat.Component
 import org.bmp.cph.config.ConfigIssue
 import org.bmp.cph.config.IssueSeverity
+import org.bmp.cph.config.ResolvedMenuText
 
 class ConfigIssuesList(
     minecraft: Minecraft,
@@ -15,6 +16,7 @@ class ConfigIssuesList(
     top: Int,
     private val rowWidth: Int,
     issues: List<ConfigIssue>,
+    private val text: ResolvedMenuText,
 ) : ObjectSelectionList<ConfigIssuesList.IssueEntry>(minecraft, width, height, top, 38) {
     init {
         issues.forEach { addEntry(IssueEntry(it, minecraft.font)) }
@@ -28,7 +30,7 @@ class ConfigIssuesList(
         private val issue: ConfigIssue,
         private val font: Font,
     ) : ObjectSelectionList.Entry<IssueEntry>() {
-        override fun getNarration(): Component = Component.literal("${issue.severity}: ${issue.path}. ${issue.message}")
+        override fun getNarration(): Component = Component.literal("${issue.severity}: ${issue.path}. ${issue.localized(text)}")
 
         override fun render(
             guiGraphics: GuiGraphics,
@@ -53,7 +55,7 @@ class ConfigIssuesList(
                 accent,
                 false,
             )
-            font.split(Component.literal(issue.message), (width - 14).coerceAtLeast(30)).take(2).forEachIndexed { line, value ->
+            font.split(Component.literal(issue.localized(text)), (width - 14).coerceAtLeast(30)).take(2).forEachIndexed { line, value ->
                 guiGraphics.drawString(font, value, left + 7, top + 16 + line * 10, 0xC8C8C8, false)
             }
         }

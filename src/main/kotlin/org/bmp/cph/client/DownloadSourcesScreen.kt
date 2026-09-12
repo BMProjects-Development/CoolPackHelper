@@ -12,11 +12,11 @@ import org.bmp.cph.config.ResolvedMenuText
 import org.bmp.cph.config.validHttpUri
 
 class DownloadSourcesScreen(
-    private val parent: Screen,
+    parent: Screen,
     private val mod: RequiredMod,
     private val links: List<DownloadLink>,
     private val text: ResolvedMenuText,
-) : Screen(Component.literal(text.sourcesTitle.replace("{mod}", mod.displayName()))) {
+) : AnimatedScreen(Component.literal(text.sourcesTitle.replace("{mod}", mod.displayName())), parent) {
     private var page = 0
     private var pageSize = 1
 
@@ -64,20 +64,15 @@ class DownloadSourcesScreen(
 
     override fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         super.render(guiGraphics, mouseX, mouseY, partialTick)
-        guiGraphics.drawCenteredString(font, title, width / 2, 14, 0xFFFFFF)
+        val offset = slideOffset()
+        guiGraphics.drawCenteredString(font, title, width / 2, 14 + offset, animatedColor(0xFFFFFF))
         if (pageCount() > 1) {
             val indicator = text.pageIndicator
                 .replace("{current}", (page + 1).toString())
                 .replace("{total}", pageCount().toString())
-            guiGraphics.drawCenteredString(font, indicator, width / 2, 34, 0xAFAFAF)
+            guiGraphics.drawCenteredString(font, indicator, width / 2, 34 + offset, animatedColor(0xAFAFAF))
         }
     }
-
-    override fun onClose() {
-        minecraft?.setScreen(parent)
-    }
-
-    override fun isPauseScreen(): Boolean = false
 
     private fun pageCount(): Int = ((links.size + pageSize - 1) / pageSize).coerceAtLeast(1)
 }
