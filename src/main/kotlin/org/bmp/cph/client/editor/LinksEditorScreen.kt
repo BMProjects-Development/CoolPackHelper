@@ -11,48 +11,45 @@ class LinksEditorScreen(
     parent: Screen,
     private val mod: RequiredMod,
 ) : EditorScreenBase(tr("links.title", mod.displayName()), parent) {
-    private var page = 0
-
     override fun init() {
         val links = mod.links.orEmpty()
-        val pageSize = ((height - 118) / 30).coerceAtLeast(1)
-        val pages = ((links.size + pageSize - 1) / pageSize).coerceAtLeast(1)
-        page = page.coerceIn(0, pages - 1)
         val contentWidth = (width - 24).coerceAtMost(650)
         val left = (width - contentWidth) / 2
-        links.withIndex().drop(page * pageSize).take(pageSize).forEachIndexed { row, indexed ->
-            val index = indexed.index
-            val link = indexed.value
-            addRenderableWidget(
-                TechButton.builder(Component.literal(link.displayLabel())) {
+        val listWidth = (width - 16).coerceAtLeast(120)
+        val indexedLinks = links.withIndex().map { it.index to it.value }
+        val list = StyledActionList(
+            minecraft ?: net.minecraft.client.Minecraft.getInstance(),
+            listWidth,
+            (height - 83).coerceAtLeast(38),
+            49,
+            (listWidth - 18).coerceIn(100, 650),
+            40,
+            indexedLinks,
+            titleOf = { it.second.displayLabel() },
+            subtitleOf = { it.second.url.orEmpty() },
+            accentOf = { 0xFF9B7BFF.toInt() },
+            actionsOf = { (index, _) -> listOf(
+                RowAction(label = { tr("mods.edit") }, width = 58) {
                     minecraft?.setScreen(LinkEntryEditorScreen(this, mod, index))
-                }.bounds(left, 47 + row * 30, contentWidth - 30, 20).build()
-            )
-            addRenderableWidget(
-                TechButton.builder(Component.literal("×")) {
+                },
+                RowAction(label = { Component.literal("×") }, width = 25, style = { TechButtonStyle.DANGER }) {
                     val mutable = mod.links.orEmpty().toMutableList()
                     mutable.removeAt(index)
                     mod.links = mutable
                     rebuildWidgets()
-                }.style(TechButtonStyle.DANGER).bounds(left + contentWidth - 24, 47 + row * 30, 24, 20).build()
-            )
-        }
-        val quarter = (contentWidth - 18) / 4
-        val navY = height - 53
-        val previous = TechButton.builder(tr("previous")) { page--; rebuildWidgets() }.bounds(left, navY, quarter, 20).build()
-        previous.active = page > 0
-        addRenderableWidget(previous)
+                },
+            ) },
+        )
+        list.x = 8
+        addRenderableWidget(list)
+        val half = (contentWidth - 6) / 2
         addRenderableWidget(
             TechButton.builder(tr("links.add")) {
                 mod.links = mod.links.orEmpty() + DownloadLink()
                 minecraft?.setScreen(LinkEntryEditorScreen(this, mod, mod.links.orEmpty().lastIndex))
-            }.bounds(left + quarter + 6, navY, quarter * 2 + 6, 20).build()
+            }.style(TechButtonStyle.PRIMARY).bounds(left, height - 27, half, 20).build()
         )
-        val next = TechButton.builder(tr("next")) { page++; rebuildWidgets() }
-            .bounds(left + (quarter + 6) * 3, navY, quarter, 20).build()
-        next.active = page < pages - 1
-        addRenderableWidget(next)
-        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(left, height - 27, contentWidth, 20).build())
+        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(left + half + 6, height - 27, half, 20).build())
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {

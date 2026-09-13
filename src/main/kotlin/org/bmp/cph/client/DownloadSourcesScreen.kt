@@ -1,7 +1,6 @@
 package org.bmp.cph.client
 
 import net.minecraft.client.gui.GuiGraphics
-import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.screens.ConfirmLinkScreen
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
@@ -12,6 +11,8 @@ import org.bmp.cph.config.validHttpUri
 import org.bmp.cph.client.editor.EditorScreenBase
 import org.bmp.cph.client.editor.TechButton
 import org.bmp.cph.client.editor.TechButtonStyle
+import org.bmp.cph.client.editor.RowAction
+import org.bmp.cph.client.editor.StyledActionList
 
 class DownloadSourcesScreen(
     parent: Screen,
@@ -19,44 +20,36 @@ class DownloadSourcesScreen(
     private val links: List<DownloadLink>,
     private val text: ResolvedMenuText,
 ) : EditorScreenBase(Component.literal(text.sourcesTitle.replace("{mod}", mod.displayName())), parent) {
-    private var page = 0
-    private var pageSize = 1
-
     override fun init() {
-        pageSize = ((height - 116) / 24).coerceAtLeast(1)
-        val pages = pageCount()
-        page = page.coerceIn(0, pages - 1)
         val buttonWidth = (width - 32).coerceIn(100, 360)
         val x = (width - buttonWidth) / 2
-        val firstY = 54
-
-        links.drop(page * pageSize).take(pageSize).forEachIndexed { index, link ->
-            val uri = validHttpUri(link.url) ?: return@forEachIndexed
-            addRenderableWidget(
-                TechButton.builder(Component.literal(link.displayLabel())) {
-                    ConfirmLinkScreen.confirmLinkNow(this, uri, true)
-                }.style(TechButtonStyle.PRIMARY)
-                    .bounds(x, firstY + index * 24, buttonWidth, 20)
-                    .tooltip(Tooltip.create(Component.literal(uri.toString())))
-                    .build()
-            )
-        }
-
-        if (pages > 1) {
-            val half = (buttonWidth - 6) / 2
-            val previous = TechButton.builder(Component.literal(text.previousButton)) {
-                page--
-                rebuildWidgets()
-            }.bounds(x, height - 51, half, 20).build()
-            previous.active = page > 0
-            addRenderableWidget(previous)
-            val next = TechButton.builder(Component.literal(text.nextButton)) {
-                page++
-                rebuildWidgets()
-            }.bounds(x + half + 6, height - 51, half, 20).build()
-            next.active = page < pages - 1
-            addRenderableWidget(next)
-        }
+        val listWidth = (width - 16).coerceAtLeast(120)
+        val list = StyledActionList(
+            minecraft ?: net.minecraft.client.Minecraft.getInstance(),
+            listWidth,
+            (height - 83).coerceAtLeast(38),
+            49,
+            (listWidth - 18).coerceIn(100, 620),
+            40,
+            links,
+            titleOf = { it.displayLabel() },
+            subtitleOf = { it.url.orEmpty() },
+            accentOf = { 0xFF62D9FF.toInt() },
+            actionsOf = { link ->
+                val uri = validHttpUri(link.url)
+                listOf(
+                    RowAction(
+                        label = { Component.literal(text.downloadButton) },
+                        width = 82,
+                        style = { TechButtonStyle.PRIMARY },
+                        enabled = { uri != null },
+                        tooltip = uri?.let { Component.literal(it.toString()) },
+                    ) { if (uri != null) ConfirmLinkScreen.confirmLinkNow(this, uri, true) }
+                )
+            },
+        )
+        list.x = 8
+        addRenderableWidget(list)
 
         addRenderableWidget(
             TechButton.builder(Component.literal(text.continueButton)) { onClose() }
@@ -67,11 +60,7 @@ class DownloadSourcesScreen(
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        val indicator = if (pageCount() > 1) text.pageIndicator
-            .replace("{current}", (page + 1).toString())
-            .replace("{total}", pageCount().toString()) else mod.displayName()
+        val indicator = text.chooseSourceButton.replace("{count}", links.size.toString())
         drawHeader(guiGraphics, Component.literal(indicator))
     }
-
-    private fun pageCount(): Int = ((links.size + pageSize - 1) / pageSize).coerceAtLeast(1)
 }

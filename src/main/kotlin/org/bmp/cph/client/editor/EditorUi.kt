@@ -78,13 +78,17 @@ class TechButton private constructor(
     height: Int,
     message: Component,
     private val subtitle: Component?,
-    private val style: TechButtonStyle,
+    private var style: TechButtonStyle,
     private val narration: ((TechButton) -> Component)?,
     private val action: (TechButton) -> Unit,
 ) : AbstractButton(x, y, width, height, message) {
     private var hoverProgress = 0f
 
     override fun onPress() = action(this)
+
+    fun setTechStyle(value: TechButtonStyle) {
+        style = value
+    }
 
     override fun renderWidget(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         val target = if (isHoveredOrFocused && active) 1f else 0f

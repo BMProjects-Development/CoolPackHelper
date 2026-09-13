@@ -33,37 +33,32 @@ class EditorValidationScreen(
     parent: Screen,
     private val issues: List<ConfigIssue>,
 ) : EditorScreenBase(tr("validation.title"), parent) {
-    private var page = 0
     private val menuText by lazy {
         MenuTextResolver.resolve(ConfigManager.config.menu, Minecraft.getInstance().languageManager.selected)
     }
 
     override fun init() {
-        val pageCount = ((issues.size + 4) / 5).coerceAtLeast(1)
-        page = page.coerceIn(0, pageCount - 1)
         val w = (width - 32).coerceAtMost(520)
         val x = (width - w) / 2
-        if (pageCount > 1) {
-            val half = (w - 6) / 2
-            val previous = TechButton.builder(tr("previous")) { page--; rebuildWidgets() }.bounds(x, height - 53, half, 20).build()
-            previous.active = page > 0
-            addRenderableWidget(previous)
-            val next = TechButton.builder(tr("next")) { page++; rebuildWidgets() }.bounds(x + half + 6, height - 53, half, 20).build()
-            next.active = page < pageCount - 1
-            addRenderableWidget(next)
-        }
+        val listWidth = (width - 16).coerceAtLeast(120)
+        val list = StyledActionList(
+            minecraft ?: Minecraft.getInstance(),
+            listWidth,
+            (height - 83).coerceAtLeast(38),
+            49,
+            (listWidth - 18).coerceIn(100, 620),
+            45,
+            issues,
+            titleOf = { it.path },
+            subtitleOf = { it.localized(menuText) },
+            accentOf = { 0xFFFF6B78.toInt() },
+        )
+        list.x = 8
+        addRenderableWidget(list)
         addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(x, height - 27, w, 20).build())
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         drawHeader(guiGraphics, tr("validation.hint"))
-        val w = (width - 32).coerceAtMost(620)
-        val x = (width - w) / 2
-        issues.drop(page * 5).take(5).forEachIndexed { index, issue ->
-            val y = 50 + index * 35
-            drawPanel(guiGraphics, x, y, x + w, y + 29)
-            guiGraphics.drawString(font, issue.path, x + 8, y + 5, 0xFF7777, false)
-            guiGraphics.drawString(font, font.plainSubstrByWidth(issue.localized(menuText), w - 16), x + 8, y + 17, 0xB8C3CE, false)
-        }
     }
 }

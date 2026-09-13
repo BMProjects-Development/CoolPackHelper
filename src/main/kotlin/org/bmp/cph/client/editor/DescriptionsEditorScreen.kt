@@ -10,45 +10,42 @@ import org.bmp.cph.config.RequiredMod
 class DescriptionsEditorScreen(
     parent: Screen,
     private val mod: RequiredMod,
-    private var page: Int = 0,
 ) : EditorScreenBase(tr("descriptions.title", mod.displayName()), parent) {
     override fun init() {
         val entries = mod.descriptions.orEmpty().entries.toList()
-        val pageSize = ((height - 118) / 30).coerceAtLeast(1)
-        val pages = ((entries.size + pageSize - 1) / pageSize).coerceAtLeast(1)
-        page = page.coerceIn(0, pages - 1)
-        val visible = entries.drop(page * pageSize).take(pageSize)
         val w = (width - 24).coerceAtMost(650)
         val x = (width - w) / 2
-        visible.forEachIndexed { row, entry ->
-            val y = 47 + row * 30
-            addRenderableWidget(
-                TechButton.builder(Component.literal("${entry.key} · ${font.plainSubstrByWidth(entry.value, w - 145)}")) {
+        val listWidth = (width - 16).coerceAtLeast(120)
+        val list = StyledActionList(
+            minecraft ?: net.minecraft.client.Minecraft.getInstance(),
+            listWidth,
+            (height - 83).coerceAtLeast(38),
+            49,
+            (listWidth - 18).coerceIn(100, 650),
+            40,
+            entries,
+            titleOf = { it.key },
+            subtitleOf = { it.value },
+            accentOf = { 0xFF62D9FF.toInt() },
+            actionsOf = { entry -> listOf(
+                RowAction(label = { tr("mods.edit") }, width = 58) {
                     minecraft?.setScreen(DescriptionEntryEditorScreen(this, mod, entry.key))
-                }.bounds(x, y, w - 30, 20).build()
-            )
-            addRenderableWidget(
-                TechButton.builder(Component.literal("×")) {
+                },
+                RowAction(label = { Component.literal("×") }, width = 25, style = { TechButtonStyle.DANGER }) {
                     mod.descriptions = mod.descriptions.orEmpty().toMutableMap().also { it.remove(entry.key) }
                     rebuildWidgets()
-                }.style(TechButtonStyle.DANGER).bounds(x + w - 24, y, 24, 20).build()
-            )
-        }
-        val quarter = (w - 18) / 4
-        val navY = height - 53
-        val previous = TechButton.builder(tr("previous")) { page--; rebuildWidgets() }.bounds(x, navY, quarter, 20).build()
-        previous.active = page > 0
-        addRenderableWidget(previous)
+                },
+            ) },
+        )
+        list.x = 8
+        addRenderableWidget(list)
+        val half = (w - 6) / 2
         addRenderableWidget(
             TechButton.builder(tr("descriptions.add")) {
                 minecraft?.setScreen(DescriptionEntryEditorScreen(this, mod, null))
-            }.bounds(x + quarter + 6, navY, quarter * 2 + 6, 20).build()
+            }.style(TechButtonStyle.PRIMARY).bounds(x, height - 27, half, 20).build()
         )
-        val next = TechButton.builder(tr("next")) { page++; rebuildWidgets() }
-            .bounds(x + (quarter + 6) * 3, navY, quarter, 20).build()
-        next.active = page < pages - 1
-        addRenderableWidget(next)
-        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(x, height - 27, w, 20).build())
+        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(x + half + 6, height - 27, half, 20).build())
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {

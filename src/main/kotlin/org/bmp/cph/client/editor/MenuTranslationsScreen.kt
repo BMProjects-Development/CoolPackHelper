@@ -2,8 +2,13 @@ package org.bmp.cph.client.editor
 
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.components.ContainerObjectSelectionList
 import net.minecraft.client.gui.components.EditBox
+import net.minecraft.client.gui.components.events.GuiEventListener
+import net.minecraft.client.gui.narration.NarratableEntry
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import org.bmp.cph.config.MenuText
@@ -11,48 +16,46 @@ import org.bmp.cph.config.MenuText
 class MenuTranslationsScreen(
     parent: Screen,
     private val session: EditorSession,
-    private var page: Int = 0,
 ) : EditorScreenBase(tr("translations.title"), parent) {
     override fun init() {
         val translations = session.ensureMenu().translations.orEmpty()
         val entries = translations.entries.toList()
-        val pageSize = ((height - 118) / 30).coerceAtLeast(1)
-        val pages = ((entries.size + pageSize - 1) / pageSize).coerceAtLeast(1)
-        page = page.coerceIn(0, pages - 1)
         val w = (width - 24).coerceAtMost(650)
         val x = (width - w) / 2
-        entries.drop(page * pageSize).take(pageSize).forEachIndexed { row, entry ->
-            val y = 47 + row * 30
-            addRenderableWidget(
-                TechButton.builder(Component.literal(entry.key)) {
+        val listWidth = (width - 16).coerceAtLeast(120)
+        val list = StyledActionList(
+            minecraft ?: net.minecraft.client.Minecraft.getInstance(),
+            listWidth,
+            (height - 83).coerceAtLeast(38),
+            49,
+            (listWidth - 18).coerceIn(100, 650),
+            40,
+            entries,
+            titleOf = { it.key },
+            subtitleOf = { translationSummary(it.value) },
+            accentOf = { 0xFF9B7BFF.toInt() },
+            actionsOf = { entry -> listOf(
+                RowAction(label = { tr("mods.edit") }, width = 58) {
                     minecraft?.setScreen(MenuTranslationEntryScreen(this, session, entry.key))
-                }.bounds(x, y, w - 30, 20).build()
-            )
-            addRenderableWidget(
-                TechButton.builder(Component.literal("×")) {
+                },
+                RowAction(label = { Component.literal("×") }, width = 25, style = { TechButtonStyle.DANGER }) {
                     val mutable = session.ensureMenu().translations.orEmpty().toMutableMap()
                     mutable.remove(entry.key)
                     session.ensureMenu().translations = mutable
                     session.markDirty()
                     rebuildWidgets()
-                }.style(TechButtonStyle.DANGER).bounds(x + w - 24, y, 24, 20).build()
-            )
-        }
-        val quarter = (w - 18) / 4
-        val navY = height - 53
-        val previous = TechButton.builder(tr("previous")) { page--; rebuildWidgets() }.bounds(x, navY, quarter, 20).build()
-        previous.active = page > 0
-        addRenderableWidget(previous)
+                },
+            ) },
+        )
+        list.x = 8
+        addRenderableWidget(list)
+        val half = (w - 6) / 2
         addRenderableWidget(
             TechButton.builder(tr("translations.add")) {
                 minecraft?.setScreen(MenuTranslationEntryScreen(this, session, null))
-            }.bounds(x + quarter + 6, navY, quarter * 2 + 6, 20).build()
+            }.style(TechButtonStyle.PRIMARY).bounds(x, height - 27, half, 20).build()
         )
-        val next = TechButton.builder(tr("next")) { page++; rebuildWidgets() }
-            .bounds(x + (quarter + 6) * 3, navY, quarter, 20).build()
-        next.active = page < pages - 1
-        addRenderableWidget(next)
-        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(x, height - 27, w, 20).build())
+        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(x + half + 6, height - 27, half, 20).build())
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -62,13 +65,15 @@ class MenuTranslationsScreen(
     override fun onClose() {
         super.onClose()
     }
+
+    private fun translationSummary(text: MenuText): String =
+        text.title?.takeIf(String::isNotBlank) ?: text.description?.takeIf(String::isNotBlank) ?: tr("translations.empty_locale").string
 }
 
 class MenuTranslationEntryScreen(
     parent: Screen,
     private val session: EditorSession,
     private val originalLocale: String?,
-    private var page: Int = 0,
     private val working: JsonObject = Gson().toJsonTree(
         originalLocale?.let { session.ensureMenu().translations.orEmpty()[it] } ?: MenuText()
     ).asJsonObject,
@@ -76,58 +81,40 @@ class MenuTranslationEntryScreen(
     private val gson = Gson()
     private var localeValue = originalLocale ?: "en_us"
     private lateinit var localeField: EditBox
-    private val fields = mutableListOf<Pair<String, EditBox>>()
 
     override fun init() {
-        fields.clear()
         val w = (width - 26).coerceAtMost(680)
         val x = (width - w) / 2
         localeField = EditBox(font, x, 48, w, 20, tr("translation.locale")).also {
-            it.value = localeValue; it.setMaxLength(32); addRenderableWidget(it)
+            it.value = localeValue
+            it.setMaxLength(32)
+            it.setResponder { value -> localeValue = value }
+            addRenderableWidget(it)
         }
-        val pageSize = if (height >= 300) 5 else 3
-        val pageCount = ((TEXT_FIELDS.size + pageSize - 1) / pageSize).coerceAtLeast(1)
-        page = page.coerceIn(0, pageCount - 1)
-        TEXT_FIELDS.drop(page * pageSize).take(pageSize).forEachIndexed { index, key ->
-            val field = EditBox(font, x, 88 + index * 39, w, 20, Component.literal(key)).also {
-                it.value = working.get(key)?.takeIf { value -> value.isJsonPrimitive }?.asString.orEmpty()
-                it.setMaxLength(8192)
-                addRenderableWidget(it)
-            }
-            fields += key to field
-        }
-        val third = (w - 12) / 3
-        val previous = TechButton.builder(tr("previous")) { commitPage(); page--; rebuildWidgets() }
-            .bounds(x, height - 27, third, 20).build()
-        previous.active = page > 0
-        addRenderableWidget(previous)
-        addRenderableWidget(
-            TechButton.builder(tr("save")) { saveAndClose() }.style(TechButtonStyle.PRIMARY)
-                .bounds(x + third + 6, height - 27, third, 20).build()
+        val listWidth = (width - 16).coerceAtLeast(120)
+        val list = TranslationFieldsList(
+            minecraft ?: Minecraft.getInstance(),
+            listWidth,
+            (height - 116).coerceAtLeast(38),
+            82,
+            (listWidth - 18).coerceIn(100, 680),
+            TEXT_FIELDS,
+            working,
         )
-        val next = TechButton.builder(tr("next")) { commitPage(); page++; rebuildWidgets() }
-            .bounds(x + (third + 6) * 2, height - 27, third, 20).build()
-        next.active = page < pageCount - 1
-        addRenderableWidget(next)
+        list.x = 8
+        addRenderableWidget(list)
+        addRenderableWidget(
+            TechButton.builder(tr("save_back")) { saveAndClose() }.style(TechButtonStyle.PRIMARY)
+                .bounds(x, height - 27, w, 20).build()
+        )
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        drawHeader(guiGraphics, tr("translation.subtitle", page + 1))
+        drawHeader(guiGraphics, tr("translation.subtitle"))
         guiGraphics.drawString(font, tr("translation.locale"), localeField.x, localeField.y - 10, 0x90A7BC, false)
-        fields.forEach { (key, field) ->
-            guiGraphics.drawString(font, key, field.x, field.y - 10, 0x90A7BC, false)
-        }
-    }
-
-    private fun commitPage() {
-        localeValue = localeField.value
-        fields.forEach { (key, field) ->
-            if (field.value.isBlank()) working.remove(key) else working.addProperty(key, field.value)
-        }
     }
 
     private fun saveAndClose() {
-        commitPage()
         val locale = localeValue.trim().lowercase()
         if (locale.isNotBlank()) {
             val mutable = session.ensureMenu().translations.orEmpty().toMutableMap()
@@ -147,5 +134,65 @@ class MenuTranslationEntryScreen(
             "configErrorDescription", "allResolvedMessage", "allTab", "requiredTab", "recommendedTab", "detailsButton",
             "detailsTitle", "modIdLabel", "installedVersionLabel", "requiredVersionLabel", "backButton", "emptyTabMessage",
         )
+    }
+}
+
+private class TranslationFieldsList(
+    minecraft: Minecraft,
+    width: Int,
+    height: Int,
+    top: Int,
+    private val rowWidth: Int,
+    keys: List<String>,
+    working: JsonObject,
+) : ContainerObjectSelectionList<TranslationFieldsList.FieldEntry>(minecraft, width, height, top, 42) {
+    init {
+        keys.forEach { key -> addEntry(FieldEntry(key, minecraft.font, working)) }
+    }
+
+    override fun getRowWidth(): Int = rowWidth
+
+    override fun getScrollbarPosition(): Int = x + width - 7
+
+    class FieldEntry(
+        private val key: String,
+        private val font: Font,
+        working: JsonObject,
+    ) : ContainerObjectSelectionList.Entry<FieldEntry>() {
+        private val field = EditBox(font, 0, 0, 100, 20, Component.literal(key)).also { editBox ->
+            editBox.value = working.get(key)?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
+            editBox.setMaxLength(8192)
+            editBox.setResponder { value ->
+                if (value.isBlank()) working.remove(key) else working.addProperty(key, value)
+            }
+        }
+
+        override fun children(): List<GuiEventListener> = listOf(field)
+
+        override fun narratables(): List<NarratableEntry> = listOf(field)
+
+        override fun render(
+            guiGraphics: GuiGraphics,
+            index: Int,
+            top: Int,
+            left: Int,
+            width: Int,
+            height: Int,
+            mouseX: Int,
+            mouseY: Int,
+            hovered: Boolean,
+            partialTick: Float,
+        ) {
+            guiGraphics.fill(left, top, left + width, top + height - 2, if (hovered) 0xE0222D3E.toInt() else 0xC5161D29.toInt())
+            guiGraphics.fill(left, top, left + 2, top + height - 2, 0xFF9B7BFF.toInt())
+            guiGraphics.fill(left + 2, top, left + width, top + 1, 0x4A5A708A)
+            guiGraphics.fill(left + width - 1, top + 1, left + width, top + height - 2, 0x334D6077)
+            guiGraphics.fill(left + 2, top + height - 3, left + width, top + height - 2, 0x334D6077)
+            guiGraphics.drawString(font, key, left + 7, top + 4, 0x90A7BC, false)
+            field.x = left + 7
+            field.y = top + 15
+            field.width = (width - 14).coerceAtLeast(20)
+            field.render(guiGraphics, mouseX, mouseY, partialTick)
+        }
     }
 }

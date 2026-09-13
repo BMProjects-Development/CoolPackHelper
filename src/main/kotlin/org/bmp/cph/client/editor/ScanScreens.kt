@@ -71,8 +71,9 @@ class ScanScreen(
 ) : EditorScreenBase(tr("scan.title", platform.displayName), parent) {
     private var started = false
     private var report: PlatformScanReport? = null
-    private var page = 0
+    private var filter = ScanResultFilter.NOT_FOUND
     private val selected = mutableSetOf<String>()
+    private lateinit var importButton: TechButton
 
     override fun init() {
         if (!started) {
@@ -82,41 +83,77 @@ class ScanScreen(
                 Minecraft.getInstance().execute {
                     report = completed
                     completed.items.filter { it.status == PlatformMatchStatus.NOT_FOUND }.forEach { selected += it.artifact.fileName }
+                    filter = if (completed.items.any { it.status == PlatformMatchStatus.NOT_FOUND }) ScanResultFilter.NOT_FOUND else ScanResultFilter.ALL
                     if (Minecraft.getInstance().screen === this) rebuildWidgets()
                 }
             }
         }
         val completed = report ?: return
-        val pageSize = ((height - 130) / 31).coerceAtLeast(1)
-        val pages = ((completed.items.size + pageSize - 1) / pageSize).coerceAtLeast(1)
-        page = page.coerceIn(0, pages - 1)
         val w = (width - 24).coerceAtMost(720)
         val x = (width - w) / 2
-        completed.items.drop(page * pageSize).take(pageSize).forEachIndexed { row, item ->
-            val y = 61 + row * 31
-            val selectable = item.status == PlatformMatchStatus.NOT_FOUND
-            val marker = if (item.artifact.fileName in selected) "✓" else "+"
-            val button = TechButton.builder(Component.literal(marker)) {
-                if (!selected.add(item.artifact.fileName)) selected.remove(item.artifact.fileName)
-                rebuildWidgets()
-            }.bounds(x + w - 25, y + 3, 22, 20).build()
-            button.active = selectable
-            addRenderableWidget(button)
+        val counts = ScanResultFilter.entries.associateWith { candidate -> completed.items.count(candidate::accepts) }
+        val tabGap = 4
+        val tabWidth = (w - tabGap * 3) / 4
+        ScanResultFilter.entries.forEachIndexed { index, candidate ->
+            addRenderableWidget(
+                TechButton.builder(tr("scan.filter.${candidate.name.lowercase()}", counts.getValue(candidate))) {
+                    filter = candidate
+                    rebuildWidgets()
+                }.style(if (filter == candidate) TechButtonStyle.PRIMARY else TechButtonStyle.GHOST)
+                    .bounds(x + index * (tabWidth + tabGap), 55, tabWidth, 20)
+                    .build()
+            )
         }
-        val third = (w - 12) / 3
-        val navY = height - 53
-        val previous = TechButton.builder(tr("previous")) { page--; rebuildWidgets() }.bounds(x, navY, third, 20).build()
-        previous.active = page > 0
-        addRenderableWidget(previous)
-        addRenderableWidget(
-            TechButton.builder(tr("scan.import", selected.size)) { importSelected() }.style(TechButtonStyle.PRIMARY)
-                .bounds(x + third + 6, navY, third, 20).build()
+        val visibleItems = completed.items.filter(filter::accepts)
+        val listTop = 80
+        val listBottom = height - 34
+        val listWidth = (width - 16).coerceAtLeast(120)
+        val list = StyledActionList(
+            minecraft ?: Minecraft.getInstance(),
+            listWidth,
+            (listBottom - listTop).coerceAtLeast(35),
+            listTop,
+            (listWidth - 18).coerceIn(100, 720),
+            39,
+            visibleItems,
+            titleOf = { it.artifact.name },
+            subtitleOf = { it.artifact.fileName },
+            accentOf = {
+                when (it.status) {
+                    PlatformMatchStatus.FOUND -> 0xFF69E09B.toInt()
+                    PlatformMatchStatus.NOT_FOUND -> 0xFFFFBE62.toInt()
+                    PlatformMatchStatus.UNKNOWN -> 0xFFFF7777.toInt()
+                }
+            },
+            badgeOf = {
+                when (it.status) {
+                    PlatformMatchStatus.FOUND -> RowBadge(tr("scan.found"), 0x69E09B)
+                    PlatformMatchStatus.NOT_FOUND -> RowBadge(tr("scan.not_found"), 0xFFBE62)
+                    PlatformMatchStatus.UNKNOWN -> RowBadge(tr("scan.unknown"), 0xFF7777)
+                }
+            },
+            actionsOf = { item ->
+                if (item.status != PlatformMatchStatus.NOT_FOUND) emptyList() else listOf(
+                    RowAction(
+                        label = { Component.literal(if (item.artifact.fileName in selected) "✓" else "+") },
+                        width = 25,
+                        style = {
+                            if (item.artifact.fileName in selected) TechButtonStyle.PRIMARY else TechButtonStyle.GHOST
+                        },
+                    ) {
+                        if (!selected.add(item.artifact.fileName)) selected.remove(item.artifact.fileName)
+                        if (::importButton.isInitialized) importButton.message = tr("scan.import", selected.size)
+                    }
+                )
+            },
         )
-        val next = TechButton.builder(tr("next")) { page++; rebuildWidgets() }
-            .bounds(x + (third + 6) * 2, navY, third, 20).build()
-        next.active = page < pages - 1
-        addRenderableWidget(next)
-        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(x, height - 27, w, 20).build())
+        list.x = 8
+        addRenderableWidget(list)
+        val half = (w - 8) / 2
+        importButton = TechButton.builder(tr("scan.import", selected.size)) { importSelected() }.style(TechButtonStyle.PRIMARY)
+            .bounds(x, height - 27, half, 20).build()
+        addRenderableWidget(importButton)
+        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(x + half + 8, height - 27, half, 20).build())
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -137,21 +174,6 @@ class ScanScreen(
         completed.error?.let {
             guiGraphics.drawCenteredString(font, font.plainSubstrByWidth(it, width - 32), width / 2, 45, 0xFF7777)
         }
-        val pageSize = ((height - 130) / 31).coerceAtLeast(1)
-        val w = (width - 24).coerceAtMost(720)
-        val x = (width - w) / 2
-        completed.items.drop(page * pageSize).take(pageSize).forEachIndexed { row, item ->
-            val y = 61 + row * 31
-            drawPanel(guiGraphics, x, y, x + w, y + 26)
-            val (label, color) = when (item.status) {
-                PlatformMatchStatus.FOUND -> tr("scan.found") to 0x69E09B
-                PlatformMatchStatus.NOT_FOUND -> tr("scan.not_found") to 0xFFBE62
-                PlatformMatchStatus.UNKNOWN -> tr("scan.unknown") to 0xFF7777
-            }
-            guiGraphics.drawString(font, font.plainSubstrByWidth(item.artifact.name, w - 165), x + 8, y + 5, 0xE7F3FF, false)
-            guiGraphics.drawString(font, font.plainSubstrByWidth(item.artifact.fileName, w - 165), x + 8, y + 16, 0x75899D, false)
-            guiGraphics.drawString(font, label, x + w - 31 - font.width(label), y + 9, color, false)
-        }
         guiGraphics.drawCenteredString(font, tr("scan.exact_warning"), width / 2, 46, 0x75899D)
     }
 
@@ -168,6 +190,20 @@ class ScanScreen(
             SystemToast.add(it.toasts, SystemToast.SystemToastId.PERIODIC_NOTIFICATION, tr("scan.imported"), tr("scan.imported.count", added))
         }
         onClose()
+    }
+}
+
+private enum class ScanResultFilter {
+    ALL,
+    FOUND,
+    NOT_FOUND,
+    UNKNOWN;
+
+    fun accepts(item: PlatformScanItem): Boolean = when (this) {
+        ALL -> true
+        FOUND -> item.status == PlatformMatchStatus.FOUND
+        NOT_FOUND -> item.status == PlatformMatchStatus.NOT_FOUND
+        UNKNOWN -> item.status == PlatformMatchStatus.UNKNOWN
     }
 }
 
