@@ -3,7 +3,6 @@ package org.bmp.cph.client
 import net.minecraft.Util
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
-import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.toasts.SystemToast
 import net.minecraft.client.gui.screens.ConfirmLinkScreen
 import net.minecraft.client.gui.screens.Screen
@@ -15,6 +14,9 @@ import org.bmp.cph.config.MenuTextResolver
 import org.bmp.cph.config.ModCategory
 import org.bmp.cph.config.ResolvedMenuText
 import org.bmp.cph.config.validHttpUri
+import org.bmp.cph.client.editor.EditorScreenBase
+import org.bmp.cph.client.editor.TechButton
+import org.bmp.cph.client.editor.TechButtonStyle
 import java.nio.file.Files
 
 class MissingModsScreen(
@@ -23,21 +25,21 @@ class MissingModsScreen(
     private val text: ResolvedMenuText,
     private var selectedTab: RequirementTab = RequirementTab.ALL,
     private val markPolicyOnClose: Boolean = false,
-) : AnimatedScreen(Component.literal(text.title), parent) {
+) : EditorScreenBase(Component.literal(text.title), parent) {
     private var compactHeader = false
     private var listTop = 64
     private var listBottom = 100
 
     override fun init() {
         compactHeader = height < 280
-        listTop = if (compactHeader) 60 else 82
+        listTop = if (compactHeader) 72 else 98
         val wideFooter = width >= 560
         val footerTop = height - if (wideFooter) 34 else 58
         listBottom = footerTop
         val listHeight = (footerTop - listTop).coerceAtLeast(40)
         val listWidth = (width - 16).coerceAtLeast(120)
         val rowWidth = (listWidth - 18).coerceIn(100, 720)
-        addTabs(if (compactHeader) 36 else 58)
+        addTabs(if (compactHeader) 47 else 73)
         val visibleResults = filteredResults()
         val list = MissingModsList(
             minecraft ?: Minecraft.getInstance(),
@@ -58,23 +60,17 @@ class MissingModsScreen(
         addFooterButtons(wideFooter)
     }
 
-    override fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        super.render(guiGraphics, mouseX, mouseY, partialTick)
-        val offset = slideOffset()
-        guiGraphics.drawCenteredString(font, title, width / 2, 10 + offset, animatedColor(0xFFFFFF))
-
+    override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         val required = results.count { it.mod.resolvedCategory() == ModCategory.REQUIRED }
         val recommended = results.size - required
         val summary = text.summary
             .replace("{required}", required.toString())
             .replace("{recommended}", recommended.toString())
-        if (compactHeader) {
-            guiGraphics.drawCenteredString(font, summary, width / 2, 23 + offset, animatedColor(0xB8B8B8))
-        } else {
+        drawHeader(guiGraphics, Component.literal(summary))
+        if (!compactHeader) {
             font.split(Component.literal(text.description), (width - 32).coerceAtLeast(40)).take(2).forEachIndexed { index, line ->
-                guiGraphics.drawCenteredString(font, line, width / 2, 27 + index * 10 + offset, animatedColor(0xB8B8B8))
+                guiGraphics.drawCenteredString(font, line, width / 2, 49 + index * 10 + slideOffset(6), animatedColor(0x8298AD))
             }
-            guiGraphics.drawCenteredString(font, summary, width / 2, 51 + offset, animatedColor(0xA0A0A0))
         }
         if (filteredResults().isEmpty()) {
             val message = if (results.isEmpty()) text.allResolvedMessage else text.emptyTabMessage
@@ -94,15 +90,15 @@ class MissingModsScreen(
             val startX = (width - totalWidth) / 2
             val y = height - 27
             addRenderableWidget(button(text.recheckButton, startX, y, buttonWidth, ::recheck))
-            addRenderableWidget(button(text.openModsFolderButton, startX + buttonWidth + 6, y, buttonWidth, ::openModsFolder))
-            addRenderableWidget(button(text.continueButton, startX + (buttonWidth + 6) * 2, y, buttonWidth) { onClose() })
+            addRenderableWidget(button(text.openModsFolderButton, startX + buttonWidth + 6, y, buttonWidth, ::openModsFolder, TechButtonStyle.GHOST))
+            addRenderableWidget(button(text.continueButton, startX + (buttonWidth + 6) * 2, y, buttonWidth, { onClose() }, TechButtonStyle.PRIMARY))
         } else {
             val totalWidth = (width - 20).coerceAtMost(400)
             val half = (totalWidth - 6) / 2
             val startX = (width - totalWidth) / 2
             addRenderableWidget(button(text.recheckButton, startX, height - 51, half, ::recheck))
             addRenderableWidget(button(text.openModsFolderButton, startX + half + 6, height - 51, half, ::openModsFolder))
-            addRenderableWidget(button(text.continueButton, width / 2 - totalWidth / 2, height - 27, totalWidth) { onClose() })
+            addRenderableWidget(button(text.continueButton, width / 2 - totalWidth / 2, height - 27, totalWidth, { onClose() }, TechButtonStyle.PRIMARY))
         }
     }
 
@@ -116,17 +112,23 @@ class MissingModsScreen(
             RequirementTab.RECOMMENDED to "${text.recommendedTab} (${results.count { it.mod.resolvedCategory() == ModCategory.RECOMMENDED }})",
         )
         labels.forEachIndexed { index, (tab, label) ->
-            val button = Button.builder(Component.literal(label)) {
+            val button = TechButton.builder(Component.literal(label)) {
                 selectedTab = tab
                 rebuildWidgets()
-            }.bounds(startX + index * (tabWidth + 4), y, tabWidth, 20).build()
-            button.active = selectedTab != tab
+            }.style(if (selectedTab == tab) TechButtonStyle.PRIMARY else TechButtonStyle.GHOST)
+                .bounds(startX + index * (tabWidth + 4), y, tabWidth, 20).build()
             addRenderableWidget(button)
         }
     }
 
-    private fun button(label: String, x: Int, y: Int, width: Int, action: () -> Unit): Button =
-        Button.builder(Component.literal(label)) { action() }.bounds(x, y, width, 20).build()
+    private fun button(
+        label: String,
+        x: Int,
+        y: Int,
+        width: Int,
+        action: () -> Unit,
+        style: TechButtonStyle = TechButtonStyle.SECONDARY,
+    ): TechButton = TechButton.builder(Component.literal(label)) { action() }.style(style).bounds(x, y, width, 20).build()
 
     private fun openDownload(result: ModCheckResult) {
         val links = result.mod.availableLinks().filter { validHttpUri(it.url) != null }

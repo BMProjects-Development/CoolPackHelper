@@ -1,7 +1,6 @@
 package org.bmp.cph.client
 
 import net.minecraft.client.gui.GuiGraphics
-import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.screens.ConfirmLinkScreen
 import net.minecraft.client.gui.screens.Screen
@@ -10,13 +9,16 @@ import org.bmp.cph.config.DownloadLink
 import org.bmp.cph.config.RequiredMod
 import org.bmp.cph.config.ResolvedMenuText
 import org.bmp.cph.config.validHttpUri
+import org.bmp.cph.client.editor.EditorScreenBase
+import org.bmp.cph.client.editor.TechButton
+import org.bmp.cph.client.editor.TechButtonStyle
 
 class DownloadSourcesScreen(
     parent: Screen,
     private val mod: RequiredMod,
     private val links: List<DownloadLink>,
     private val text: ResolvedMenuText,
-) : AnimatedScreen(Component.literal(text.sourcesTitle.replace("{mod}", mod.displayName())), parent) {
+) : EditorScreenBase(Component.literal(text.sourcesTitle.replace("{mod}", mod.displayName())), parent) {
     private var page = 0
     private var pageSize = 1
 
@@ -31,9 +33,10 @@ class DownloadSourcesScreen(
         links.drop(page * pageSize).take(pageSize).forEachIndexed { index, link ->
             val uri = validHttpUri(link.url) ?: return@forEachIndexed
             addRenderableWidget(
-                Button.builder(Component.literal(link.displayLabel())) {
+                TechButton.builder(Component.literal(link.displayLabel())) {
                     ConfirmLinkScreen.confirmLinkNow(this, uri, true)
-                }.bounds(x, firstY + index * 24, buttonWidth, 20)
+                }.style(TechButtonStyle.PRIMARY)
+                    .bounds(x, firstY + index * 24, buttonWidth, 20)
                     .tooltip(Tooltip.create(Component.literal(uri.toString())))
                     .build()
             )
@@ -41,13 +44,13 @@ class DownloadSourcesScreen(
 
         if (pages > 1) {
             val half = (buttonWidth - 6) / 2
-            val previous = Button.builder(Component.literal(text.previousButton)) {
+            val previous = TechButton.builder(Component.literal(text.previousButton)) {
                 page--
                 rebuildWidgets()
             }.bounds(x, height - 51, half, 20).build()
             previous.active = page > 0
             addRenderableWidget(previous)
-            val next = Button.builder(Component.literal(text.nextButton)) {
+            val next = TechButton.builder(Component.literal(text.nextButton)) {
                 page++
                 rebuildWidgets()
             }.bounds(x + half + 6, height - 51, half, 20).build()
@@ -56,22 +59,18 @@ class DownloadSourcesScreen(
         }
 
         addRenderableWidget(
-            Button.builder(Component.literal(text.continueButton)) { onClose() }
+            TechButton.builder(Component.literal(text.continueButton)) { onClose() }
+                .style(TechButtonStyle.GHOST)
                 .bounds(x, height - 27, buttonWidth, 20)
                 .build()
         )
     }
 
-    override fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        super.render(guiGraphics, mouseX, mouseY, partialTick)
-        val offset = slideOffset()
-        guiGraphics.drawCenteredString(font, title, width / 2, 14 + offset, animatedColor(0xFFFFFF))
-        if (pageCount() > 1) {
-            val indicator = text.pageIndicator
-                .replace("{current}", (page + 1).toString())
-                .replace("{total}", pageCount().toString())
-            guiGraphics.drawCenteredString(font, indicator, width / 2, 34 + offset, animatedColor(0xAFAFAF))
-        }
+    override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+        val indicator = if (pageCount() > 1) text.pageIndicator
+            .replace("{current}", (page + 1).toString())
+            .replace("{total}", pageCount().toString()) else mod.displayName()
+        drawHeader(guiGraphics, Component.literal(indicator))
     }
 
     private fun pageCount(): Int = ((links.size + pageSize - 1) / pageSize).coerceAtLeast(1)

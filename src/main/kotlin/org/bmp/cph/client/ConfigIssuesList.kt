@@ -45,8 +45,11 @@ class ConfigIssuesList(
             partialTick: Float,
         ) {
             val accent = if (issue.severity == IssueSeverity.ERROR) 0xFFE46A6A.toInt() else 0xFFE0B85B.toInt()
-            guiGraphics.fill(left, top, left + width, top + height, if (hovered) 0xAA303030.toInt() else 0x88303030.toInt())
+            guiGraphics.fill(left, top, left + width, top + height, if (hovered) 0xE02A2635.toInt() else 0xC5181D29.toInt())
             guiGraphics.fill(left, top, left + 2, top + height, accent)
+            guiGraphics.fill(left + 2, top, left + width, top + 1, 0x555A708A)
+            guiGraphics.fill(left + width - 1, top + 1, left + width, top + height, 0x334D6077)
+            guiGraphics.fill(left + 2, top + height - 1, left + width, top + height, 0x334D6077)
             guiGraphics.drawString(
                 font,
                 font.plainSubstrByWidth("${issue.severity}: ${issue.path}", (width - 14).coerceAtLeast(30)),

@@ -4,6 +4,7 @@ import net.minecraft.Util
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.AbstractButton
 import net.minecraft.client.gui.components.Tooltip
+import net.minecraft.client.gui.narration.NarratedElementType
 import net.minecraft.client.gui.narration.NarrationElementOutput
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
@@ -78,6 +79,7 @@ class TechButton private constructor(
     message: Component,
     private val subtitle: Component?,
     private val style: TechButtonStyle,
+    private val narration: ((TechButton) -> Component)?,
     private val action: (TechButton) -> Unit,
 ) : AbstractButton(x, y, width, height, message) {
     private var hoverProgress = 0f
@@ -99,8 +101,22 @@ class TechButton private constructor(
         val background = blend(colors.first, colors.second, hoverProgress)
         val accentColor = if (active) colors.third else 0xFF526070.toInt()
         guiGraphics.fill(x, y, x + width, y + height, background)
-        guiGraphics.fill(x, y, x + if (style == TechButtonStyle.CARD) 3 else width, y + if (style == TechButtonStyle.CARD) height else 1, accentColor)
-        guiGraphics.fill(x, y + height - 1, x + width, y + height, withAlpha(accentColor, if (isHoveredOrFocused) 190 else 65))
+        val outline = withAlpha(accentColor, if (isHoveredOrFocused) 210 else if (style == TechButtonStyle.DANGER) 145 else 72)
+        guiGraphics.fill(x, y, x + width, y + 1, outline)
+        guiGraphics.fill(x, y + height - 1, x + width, y + height, outline)
+        guiGraphics.fill(x, y + 1, x + 1, y + height - 1, outline)
+        guiGraphics.fill(x + width - 1, y + 1, x + width, y + height - 1, outline)
+        when (style) {
+            TechButtonStyle.CARD -> guiGraphics.fill(x, y, x + 3, y + height, accentColor)
+            TechButtonStyle.PRIMARY -> guiGraphics.fill(x + 1, y + height - 2, x + width - 1, y + height, accentColor)
+            TechButtonStyle.DANGER -> {
+                guiGraphics.fill(x, y, x + width, y + 1, accentColor)
+                guiGraphics.fill(x, y + height - 1, x + width, y + height, accentColor)
+                guiGraphics.fill(x, y, x + 1, y + height, accentColor)
+                guiGraphics.fill(x + width - 1, y, x + width, y + height, accentColor)
+            }
+            else -> Unit
+        }
 
         val minecraft = net.minecraft.client.Minecraft.getInstance()
         val font = minecraft.font
@@ -119,7 +135,11 @@ class TechButton private constructor(
         }
     }
 
-    override fun updateWidgetNarration(output: NarrationElementOutput) = defaultButtonNarrationText(output)
+    override fun updateWidgetNarration(output: NarrationElementOutput) {
+        val custom = narration?.invoke(this)
+        if (custom == null) defaultButtonNarrationText(output)
+        else output.add(NarratedElementType.TITLE, custom)
+    }
 
     class Builder internal constructor(
         private val message: Component,
@@ -132,6 +152,7 @@ class TechButton private constructor(
         private var subtitle: Component? = null
         private var style = TechButtonStyle.SECONDARY
         private var tooltip: Tooltip? = null
+        private var narration: ((TechButton) -> Component)? = null
 
         fun bounds(x: Int, y: Int, width: Int, height: Int) = apply {
             this.x = x; this.y = y; this.width = width; this.height = height
@@ -143,7 +164,9 @@ class TechButton private constructor(
 
         fun tooltip(value: Tooltip?) = apply { tooltip = value }
 
-        fun build(): TechButton = TechButton(x, y, width, height, message, subtitle, style, action).also {
+        fun createNarration(value: (TechButton) -> Component) = apply { narration = value }
+
+        fun build(): TechButton = TechButton(x, y, width, height, message, subtitle, style, narration, action).also {
             tooltip?.let(it::setTooltip)
         }
     }

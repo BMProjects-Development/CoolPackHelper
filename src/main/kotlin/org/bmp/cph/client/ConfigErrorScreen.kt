@@ -3,7 +3,6 @@ package org.bmp.cph.client
 import net.minecraft.Util
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
-import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.toasts.SystemToast
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
@@ -13,16 +12,19 @@ import org.bmp.cph.config.ConfigManager
 import org.bmp.cph.config.MenuTextResolver
 import org.bmp.cph.config.ResolvedMenuText
 import java.nio.file.Files
+import org.bmp.cph.client.editor.EditorScreenBase
+import org.bmp.cph.client.editor.TechButton
+import org.bmp.cph.client.editor.TechButtonStyle
 
 class ConfigErrorScreen(
     parent: Screen,
     private val issues: List<ConfigIssue>,
     private val text: ResolvedMenuText,
     private val markPolicyOnResolvedScreen: Boolean = false,
-) : AnimatedScreen(Component.literal(text.configErrorTitle), parent) {
+) : EditorScreenBase(Component.literal(text.configErrorTitle), parent) {
     override fun init() {
         val wide = width >= 560
-        val listTop = 52
+        val listTop = 75
         val footerTop = height - if (wide) 34 else 58
         val listWidth = (width - 16).coerceAtLeast(120)
         val list = ConfigIssuesList(
@@ -39,12 +41,11 @@ class ConfigErrorScreen(
         addFooterButtons(wide)
     }
 
-    override fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        super.render(guiGraphics, mouseX, mouseY, partialTick)
+    override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         val offset = slideOffset()
-        guiGraphics.drawCenteredString(font, title, width / 2, 12 + offset, animatedColor(0xE46A6A))
+        drawHeader(guiGraphics)
         font.split(Component.literal(text.configErrorDescription), (width - 32).coerceAtLeast(40)).take(2).forEachIndexed { index, line ->
-            guiGraphics.drawCenteredString(font, line, width / 2, 29 + index * 10 + offset, animatedColor(0xC8C8C8))
+            guiGraphics.drawCenteredString(font, line, width / 2, 49 + index * 10 + offset, animatedColor(0x93A7BB))
         }
     }
 
@@ -54,20 +55,26 @@ class ConfigErrorScreen(
             val buttonWidth = (totalWidth - 12) / 3
             val startX = (width - totalWidth) / 2
             addRenderableWidget(button(text.recheckButton, startX, height - 27, buttonWidth, ::recheck))
-            addRenderableWidget(button(text.openConfigFolderButton, startX + buttonWidth + 6, height - 27, buttonWidth, ::openConfigFolder))
-            addRenderableWidget(button(text.continueButton, startX + (buttonWidth + 6) * 2, height - 27, buttonWidth) { onClose() })
+            addRenderableWidget(button(text.openConfigFolderButton, startX + buttonWidth + 6, height - 27, buttonWidth, ::openConfigFolder, TechButtonStyle.GHOST))
+            addRenderableWidget(button(text.continueButton, startX + (buttonWidth + 6) * 2, height - 27, buttonWidth, { onClose() }, TechButtonStyle.PRIMARY))
         } else {
             val totalWidth = (width - 20).coerceAtMost(400)
             val half = (totalWidth - 6) / 2
             val startX = (width - totalWidth) / 2
             addRenderableWidget(button(text.recheckButton, startX, height - 51, half, ::recheck))
             addRenderableWidget(button(text.openConfigFolderButton, startX + half + 6, height - 51, half, ::openConfigFolder))
-            addRenderableWidget(button(text.continueButton, startX, height - 27, totalWidth) { onClose() })
+            addRenderableWidget(button(text.continueButton, startX, height - 27, totalWidth, { onClose() }, TechButtonStyle.PRIMARY))
         }
     }
 
-    private fun button(label: String, x: Int, y: Int, width: Int, action: () -> Unit): Button =
-        Button.builder(Component.literal(label)) { action() }.bounds(x, y, width, 20).build()
+    private fun button(
+        label: String,
+        x: Int,
+        y: Int,
+        width: Int,
+        action: () -> Unit,
+        style: TechButtonStyle = TechButtonStyle.SECONDARY,
+    ): TechButton = TechButton.builder(Component.literal(label)) { action() }.style(style).bounds(x, y, width, 20).build()
 
     private fun openConfigFolder() {
         try {

@@ -3,7 +3,6 @@ package org.bmp.cph.client
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.GuiGraphics
-import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.ContainerObjectSelectionList
 import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.components.events.GuiEventListener
@@ -11,6 +10,8 @@ import net.minecraft.client.gui.narration.NarratableEntry
 import net.minecraft.network.chat.Component
 import org.bmp.cph.config.ModCategory
 import org.bmp.cph.config.ResolvedMenuText
+import org.bmp.cph.client.editor.TechButton
+import org.bmp.cph.client.editor.TechButtonStyle
 
 class MissingModsList(
     minecraft: Minecraft,
@@ -45,11 +46,13 @@ class MissingModsList(
         private val font: Font,
     ) : ContainerObjectSelectionList.Entry<ModEntry>() {
         private val links = result.mod.availableLinks()
-        private val downloadButton = Button.builder(Component.literal(buttonLabel())) { onDownload(result) }
+        private val downloadButton = TechButton.builder(Component.literal(buttonLabel())) { onDownload(result) }
+            .style(TechButtonStyle.PRIMARY)
             .tooltip(Tooltip.create(Component.literal(links.joinToString("\n") { it.displayLabel() })))
             .bounds(0, 0, 160, 20)
             .build()
-        private val detailsButton = Button.builder(Component.literal(text.detailsButton)) { onDetails(result) }
+        private val detailsButton = TechButton.builder(Component.literal(text.detailsButton)) { onDetails(result) }
+            .style(TechButtonStyle.GHOST)
             .createNarration { Component.literal(narrationText()) }
             .bounds(0, 0, 160, 20)
             .build()
@@ -73,9 +76,12 @@ class MissingModsList(
             val animatedTop = top + ((1f - animationProgress()) * 10).toInt()
             val category = result.mod.resolvedCategory()
             val accent = if (category == ModCategory.REQUIRED) 0xFFE46A6A.toInt() else 0xFFE0B85B.toInt()
-            val background = if (hovered) 0xAA303030.toInt() else 0x88303030.toInt()
+            val background = if (hovered) 0xE0222D3E.toInt() else 0xC5161D29.toInt()
             guiGraphics.fill(left, animatedTop, left + width, animatedTop + height, background)
             guiGraphics.fill(left, animatedTop, left + 2, animatedTop + height, accent)
+            guiGraphics.fill(left + 2, animatedTop, left + width, animatedTop + 1, 0x555A708A)
+            guiGraphics.fill(left + width - 1, animatedTop + 1, left + width, animatedTop + height, 0x334D6077)
+            guiGraphics.fill(left + 2, animatedTop + height - 1, left + width, animatedTop + height, 0x334D6077)
 
             val categoryLabel = if (category == ModCategory.REQUIRED) text.requiredLabel else text.recommendedLabel
             val categoryWidth = font.width(categoryLabel)

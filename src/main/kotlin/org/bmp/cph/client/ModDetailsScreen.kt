@@ -3,7 +3,6 @@ package org.bmp.cph.client
 import com.mojang.blaze3d.vertex.Tesselator
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
-import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.narration.NarrationElementOutput
 import net.minecraft.client.gui.narration.NarratableEntry
 import net.minecraft.client.gui.screens.ConfirmLinkScreen
@@ -14,20 +13,32 @@ import net.neoforged.neoforge.client.gui.widget.ScrollPanel
 import org.bmp.cph.config.ModCategory
 import org.bmp.cph.config.ResolvedMenuText
 import org.bmp.cph.config.validHttpUri
+import org.bmp.cph.client.editor.EditorScreenBase
+import org.bmp.cph.client.editor.TechButton
+import org.bmp.cph.client.editor.TechButtonStyle
 
 class ModDetailsScreen(
     parent: Screen,
     private val result: ModCheckResult,
     private val text: ResolvedMenuText,
-) : AnimatedScreen(
+) : EditorScreenBase(
     Component.literal(text.detailsTitle.replace("{mod}", result.mod.displayName())),
     parent,
 ) {
+    private var panelLeft = 0
+    private var panelTop = 54
+    private var panelWidth = 0
+    private var panelBottom = 100
+
     override fun init() {
         val contentWidth = (width - 24).coerceIn(120, 720)
         val left = (width - contentWidth) / 2
         val top = 54
         val footerTop = height - 34
+        panelLeft = left
+        panelTop = top
+        panelWidth = contentWidth
+        panelBottom = footerTop
         addRenderableWidget(
             DetailsPanel(
                 minecraft ?: Minecraft.getInstance(),
@@ -42,25 +53,28 @@ class ModDetailsScreen(
         val gap = 6
         val buttonWidth = (contentWidth - gap) / 2
         addRenderableWidget(
-            Button.builder(Component.literal(downloadLabel())) { openDownload() }
+            TechButton.builder(Component.literal(downloadLabel())) { openDownload() }
+                .style(TechButtonStyle.PRIMARY)
                 .bounds(left, height - 27, buttonWidth, 20)
                 .build()
         )
         addRenderableWidget(
-            Button.builder(Component.literal(text.backButton)) { onClose() }
+            TechButton.builder(Component.literal(text.backButton)) { onClose() }
+                .style(TechButtonStyle.GHOST)
                 .bounds(left + buttonWidth + gap, height - 27, buttonWidth, 20)
                 .build()
         )
     }
 
-    override fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        super.render(guiGraphics, mouseX, mouseY, partialTick)
-        val offset = slideOffset()
-        guiGraphics.drawCenteredString(font, title, width / 2, 11 + offset, animatedColor(0xFFFFFF))
+    override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+        drawHeader(guiGraphics)
+        drawPanel(guiGraphics, panelLeft, panelTop, panelLeft + panelWidth, panelBottom)
         val category = result.mod.resolvedCategory()
         val categoryText = if (category == ModCategory.REQUIRED) text.requiredLabel else text.recommendedLabel
         val color = if (category == ModCategory.REQUIRED) 0xE46A6A else 0xE0B85B
-        guiGraphics.drawCenteredString(font, categoryText, width / 2, 29 + offset, animatedColor(color))
+        val labelWidth = font.width(categoryText) + 14
+        guiGraphics.fill(width / 2 - labelWidth / 2, 29 + slideOffset(6), width / 2 + labelWidth / 2, 42 + slideOffset(6), animatedColor(0x172231))
+        guiGraphics.drawCenteredString(font, categoryText, width / 2, 31 + slideOffset(6), animatedColor(color))
     }
 
     private fun detailsLines(maxWidth: Int): List<FormattedCharSequence> = buildList {
