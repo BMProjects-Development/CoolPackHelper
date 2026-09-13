@@ -30,6 +30,7 @@
   "cph.editor.unsaved.discard": "Не сохранять",
   "cph.editor.validation.title": "Конфигурацию нужно исправить",
   "cph.editor.validation.hint": "Откройте соответствующий раздел редактора и исправьте поля.",
+  "cph.editor.validation.click_hint": "Нажмите, чтобы перейти к исправлению ошибки",
   "cph.editor.general.title": "Настройки сборки",
   "cph.editor.general.subtitle": "Можно автоматически использовать язык игры или выбрать конкретный",
   "cph.editor.general.pack_id": "Постоянный ID сборки",

@@ -3,10 +3,12 @@ package org.bmp.cph.client.editor
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.components.AbstractButton
 import net.minecraft.client.gui.components.ContainerObjectSelectionList
 import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.components.events.GuiEventListener
 import net.minecraft.client.gui.narration.NarratableEntry
+import net.minecraft.client.gui.narration.NarrationElementOutput
 import net.minecraft.network.chat.Component
 
 data class RowBadge(val text: Component, val color: Int)
@@ -33,6 +35,9 @@ class StyledActionList<T>(
     private val accentOf: (T) -> Int = { 0xFF62D9FF.toInt() },
     private val badgeOf: (T) -> RowBadge? = { null },
     private val actionsOf: (T) -> List<RowAction> = { emptyList() },
+    private val onRowClick: ((T) -> Unit)? = null,
+    private val rowClickable: (T) -> Boolean = { true },
+    private val rowTooltipOf: (T) -> Component? = { null },
 ) : ContainerObjectSelectionList<StyledActionList<T>.Entry>(minecraft, width, height, top, rowHeight) {
     init {
         items.forEach { addEntry(Entry(it, minecraft.font)) }
@@ -54,10 +59,15 @@ class StyledActionList<T>(
                 .bounds(0, 0, action.width, 20)
                 .build()
         }
+        private val rowButton = onRowClick?.takeIf { rowClickable(value) }?.let { open ->
+            InvisibleRowButton(Component.literal(titleOf(value))) { open(value) }.also { button ->
+                rowTooltipOf(value)?.let { button.setTooltip(Tooltip.create(it)) }
+            }
+        }
 
-        override fun children(): List<GuiEventListener> = buttons
+        override fun children(): List<GuiEventListener> = buttons + listOfNotNull(rowButton)
 
-        override fun narratables(): List<NarratableEntry> = buttons
+        override fun narratables(): List<NarratableEntry> = buttons + listOfNotNull(rowButton)
 
         override fun render(
             guiGraphics: GuiGraphics,
@@ -81,7 +91,8 @@ class StyledActionList<T>(
             val totalActionsWidth = actions.sumOf(RowAction::width) + (actions.size - 1).coerceAtLeast(0) * 4
             val badge = badgeOf(value)
             val badgeWidth = badge?.let { font.width(it.text) + 12 } ?: 0
-            val textWidth = (width - totalActionsWidth - badgeWidth - 26).coerceAtLeast(24)
+            val rowActionWidth = if (rowButton == null) 0 else 12
+            val textWidth = (width - totalActionsWidth - badgeWidth - rowActionWidth - 26).coerceAtLeast(24)
             guiGraphics.drawString(font, font.plainSubstrByWidth(titleOf(value), textWidth), left + 8, top + 7, 0xE7F3FF, false)
             subtitleOf(value).takeIf(String::isNotBlank)?.let {
                 guiGraphics.drawString(font, font.plainSubstrByWidth(it, textWidth), left + 8, top + 20, 0x8094A8, false)
@@ -103,6 +114,27 @@ class StyledActionList<T>(
                 button.render(guiGraphics, mouseX, mouseY, partialTick)
                 buttonX += action.width + 4
             }
+            rowButton?.let { button ->
+                if (hovered) {
+                    guiGraphics.drawString(font, Component.literal("›"), left + width - totalActionsWidth - 13, top + height / 2 - 4, accent, false)
+                }
+                button.x = left
+                button.y = top
+                button.width = width
+                button.height = height - 2
+                button.render(guiGraphics, mouseX, mouseY, partialTick)
+            }
         }
     }
+}
+
+internal class InvisibleRowButton(
+    message: Component,
+    private val action: () -> Unit,
+) : AbstractButton(0, 0, 0, 0, message) {
+    override fun onPress() = action()
+
+    override fun renderWidget(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) = Unit
+
+    override fun updateWidgetNarration(output: NarrationElementOutput) = defaultButtonNarrationText(output)
 }

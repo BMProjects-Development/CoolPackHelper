@@ -95,7 +95,7 @@ class EditorHubScreen(
         val issues = session.save()
         val errors = issues.filter { it.severity == IssueSeverity.ERROR }
         if (errors.isNotEmpty()) {
-            minecraft?.setScreen(EditorValidationScreen(this, errors))
+            minecraft?.setScreen(EditorValidationScreen(this, session, errors))
             return false
         }
         Minecraft.getInstance().let {
@@ -108,7 +108,7 @@ class EditorHubScreen(
     private fun previewRequirements() {
         val issues = ConfigValidator.validate(session.config).filter { it.severity == IssueSeverity.ERROR }
         if (issues.isNotEmpty()) {
-            minecraft?.setScreen(EditorValidationScreen(this, issues))
+            minecraft?.setScreen(EditorValidationScreen(this, session, issues))
             return
         }
         val language = Minecraft.getInstance().languageManager.selected

@@ -13,6 +13,9 @@ import org.bmp.cph.config.MenuTextResolver
 import org.bmp.cph.config.ResolvedMenuText
 import java.nio.file.Files
 import org.bmp.cph.client.editor.EditorScreenBase
+import org.bmp.cph.client.editor.EditorHubScreen
+import org.bmp.cph.client.editor.EditorIssueNavigator
+import org.bmp.cph.client.editor.EditorSession
 import org.bmp.cph.client.editor.TechButton
 import org.bmp.cph.client.editor.TechButtonStyle
 
@@ -22,6 +25,9 @@ class ConfigErrorScreen(
     private val text: ResolvedMenuText,
     private val markPolicyOnResolvedScreen: Boolean = false,
 ) : EditorScreenBase(Component.literal(text.configErrorTitle), parent) {
+    private val editorSession by lazy(EditorSession::open)
+    private val editorRoot by lazy { EditorHubScreen(this, editorSession) }
+
     override fun init() {
         val wide = width >= 560
         val listTop = 75
@@ -35,6 +41,12 @@ class ConfigErrorScreen(
             (listWidth - 18).coerceIn(100, 720),
             issues,
             text,
+            canOpen = { true },
+            onOpen = { issue ->
+                val destination = EditorIssueNavigator.destination(editorRoot, editorSession, issue)
+                if (destination == null) openConfigFolder() else minecraft?.setScreen(destination)
+            },
+            openHint = Component.translatable("cph.editor.validation.click_hint"),
         )
         list.x = 8
         addRenderableWidget(list)

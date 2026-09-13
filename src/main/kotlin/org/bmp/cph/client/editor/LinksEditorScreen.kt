@@ -10,6 +10,7 @@ import org.bmp.cph.config.RequiredMod
 class LinksEditorScreen(
     parent: Screen,
     private val mod: RequiredMod,
+    private val onChanged: () -> Unit = {},
 ) : EditorScreenBase(tr("links.title", mod.displayName()), parent) {
     override fun init() {
         val links = mod.links.orEmpty()
@@ -30,12 +31,13 @@ class LinksEditorScreen(
             accentOf = { 0xFF9B7BFF.toInt() },
             actionsOf = { (index, _) -> listOf(
                 RowAction(label = { tr("mods.edit") }, width = 58) {
-                    minecraft?.setScreen(LinkEntryEditorScreen(this, mod, index))
+                    minecraft?.setScreen(LinkEntryEditorScreen(this, mod, index, onChanged))
                 },
                 RowAction(label = { Component.literal("×") }, width = 25, style = { TechButtonStyle.DANGER }) {
                     val mutable = mod.links.orEmpty().toMutableList()
                     mutable.removeAt(index)
                     mod.links = mutable
+                    onChanged()
                     rebuildWidgets()
                 },
             ) },
@@ -46,7 +48,7 @@ class LinksEditorScreen(
         addRenderableWidget(
             TechButton.builder(tr("links.add")) {
                 mod.links = mod.links.orEmpty() + DownloadLink()
-                minecraft?.setScreen(LinkEntryEditorScreen(this, mod, mod.links.orEmpty().lastIndex))
+                minecraft?.setScreen(LinkEntryEditorScreen(this, mod, mod.links.orEmpty().lastIndex, onChanged))
             }.style(TechButtonStyle.PRIMARY).bounds(left, height - 27, half, 20).build()
         )
         addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(left + half + 6, height - 27, half, 20).build())
@@ -66,6 +68,7 @@ class LinkEntryEditorScreen(
     parent: Screen,
     private val mod: RequiredMod,
     private val index: Int,
+    private val onChanged: () -> Unit = {},
 ) : EditorScreenBase(tr("link.title"), parent) {
     private lateinit var labelField: EditBox
     private lateinit var urlField: EditBox
@@ -94,6 +97,7 @@ class LinkEntryEditorScreen(
         val edited = DownloadLink(labelField.value.trim(), urlField.value.trim())
         if (index in mutable.indices) mutable[index] = edited else mutable += edited
         mod.links = mutable
+        onChanged()
         onClose()
     }
 }

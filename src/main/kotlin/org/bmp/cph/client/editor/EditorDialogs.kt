@@ -3,8 +3,8 @@ package org.bmp.cph.client.editor
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.Minecraft
+import org.bmp.cph.client.ConfigIssuesList
 import org.bmp.cph.config.ConfigIssue
-import org.bmp.cph.config.ConfigManager
 import org.bmp.cph.config.MenuTextResolver
 
 class UnsavedChangesScreen(
@@ -31,27 +31,30 @@ class UnsavedChangesScreen(
 
 class EditorValidationScreen(
     parent: Screen,
+    private val session: EditorSession,
     private val issues: List<ConfigIssue>,
 ) : EditorScreenBase(tr("validation.title"), parent) {
     private val menuText by lazy {
-        MenuTextResolver.resolve(ConfigManager.config.menu, Minecraft.getInstance().languageManager.selected)
+        MenuTextResolver.resolve(session.config.menu, Minecraft.getInstance().languageManager.selected)
     }
 
     override fun init() {
         val w = (width - 32).coerceAtMost(520)
         val x = (width - w) / 2
         val listWidth = (width - 16).coerceAtLeast(120)
-        val list = StyledActionList(
+        val list = ConfigIssuesList(
             minecraft ?: Minecraft.getInstance(),
             listWidth,
             (height - 83).coerceAtLeast(38),
             49,
             (listWidth - 18).coerceIn(100, 620),
-            45,
             issues,
-            titleOf = { it.displayPath ?: it.path },
-            subtitleOf = { it.localized(menuText) },
-            accentOf = { 0xFFFF6B78.toInt() },
+            menuText,
+            canOpen = EditorIssueNavigator::canOpen,
+            onOpen = { issue ->
+                EditorIssueNavigator.destination(previousScreen, session, issue)?.let { minecraft?.setScreen(it) }
+            },
+            openHint = tr("validation.click_hint"),
         )
         list.x = 8
         addRenderableWidget(list)

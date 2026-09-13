@@ -30,6 +30,7 @@
   "cph.editor.unsaved.discard": "Discard changes",
   "cph.editor.validation.title": "Configuration needs attention",
   "cph.editor.validation.hint": "Open the corresponding editor section and fix these fields.",
+  "cph.editor.validation.click_hint": "Click to open the relevant editor section",
   "cph.editor.general.title": "Pack settings",
   "cph.editor.general.subtitle": "The game language can be used automatically or overridden",
   "cph.editor.general.pack_id": "Stable pack ID",
