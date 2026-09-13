@@ -14,6 +14,7 @@ data class ConfigIssue(
     val code: String,
     val severity: IssueSeverity,
     val arguments: Map<String, String> = emptyMap(),
+    val displayPath: String? = null,
 ) {
     fun localized(text: ResolvedMenuText): String {
         var result = text.validationMessages[code] ?: code
@@ -104,32 +105,49 @@ object ConfigValidator {
 
         enabledMods.forEach { (index, mod) ->
             val path = if (config.mods != null) "mods[$index]" else "requiredMods[$index]"
-            if (mod.name.isNullOrBlank() && mod.modId.isNullOrBlank() && mod.filePattern.isNullOrBlank()) error(path, "empty_entry")
-            if (mod.modId.isNullOrBlank() && mod.filePattern.isNullOrBlank()) error(path, "missing_detector")
+            val modDisplayName = mod.displayName().takeUnless { it == "Unknown mod" } ?: "Mod #${index + 1}"
+            if (mod.name.isNullOrBlank() && mod.modId.isNullOrBlank() && mod.filePattern.isNullOrBlank()) {
+                error(path, "empty_entry", displayPath = modDisplayName)
+            }
+            if (mod.modId.isNullOrBlank() && mod.filePattern.isNullOrBlank()) {
+                error(path, "missing_detector", displayPath = modDisplayName)
+            }
             if (mod.category != null && ModCategory.entries.none { it.name.equals(mod.category, ignoreCase = true) }) {
-                error("$path.category", "unknown_category", "value" to mod.category.orEmpty())
+                error("$path.category", "unknown_category", "value" to mod.category.orEmpty(), displayPath = modDisplayName)
             }
             if (!mod.modId.isNullOrBlank() && mod.modId!!.trim().lowercase() in duplicateIds) {
-                warning("$path.modId", "duplicate_mod_id", "value" to mod.modId.orEmpty())
+                warning("$path.modId", "duplicate_mod_id", "value" to mod.modId.orEmpty(), displayPath = modDisplayName)
             }
 
             mod.versionRange?.takeIf { it.isNotBlank() }?.let { range ->
                 if (mod.modId.isNullOrBlank()) {
-                    warning("$path.versionRange", "version_requires_mod_id")
+                    warning("$path.versionRange", "version_requires_mod_id", displayPath = modDisplayName)
                 } else {
                     try {
                         VersionRange.createFromVersionSpec(range)
                     } catch (exception: Exception) {
-                        error("$path.versionRange", "invalid_version_range", "value" to range, "details" to exception.message.orEmpty())
+                        error(
+                            "$path.versionRange",
+                            "invalid_version_range",
+                            "value" to range,
+                            "details" to exception.message.orEmpty(),
+                            displayPath = modDisplayName,
+                        )
                     }
                 }
             }
 
             val links = mod.availableLinks()
-            if (links.isEmpty()) error("$path.links", "missing_links")
+            if (links.isEmpty()) error("$path.links", "missing_links", displayPath = modDisplayName)
             links.forEachIndexed { linkIndex, link ->
-                if (validHttpUri(link.url) == null) error("$path.links[$linkIndex].url", "invalid_url")
-                if (link.label.isNullOrBlank()) warning("$path.links[$linkIndex].label", "missing_link_label")
+                val linkName = link.label?.takeIf { it.isNotBlank() } ?: "#${linkIndex + 1}"
+                val linkDisplayPath = "$modDisplayName · $linkName"
+                if (validHttpUri(link.url) == null) {
+                    error("$path.links[$linkIndex].url", "invalid_url", displayPath = linkDisplayPath)
+                }
+                if (link.label.isNullOrBlank()) {
+                    warning("$path.links[$linkIndex].label", "missing_link_label", displayPath = linkDisplayPath)
+                }
             }
         }
     }
@@ -142,11 +160,21 @@ object ConfigValidator {
 
     private fun JsonObject.objectAt(name: String): JsonObject? = get(name)?.takeIf(JsonElement::isJsonObject)?.asJsonObject
 
-    private fun MutableList<ConfigIssue>.error(path: String, code: String, vararg arguments: Pair<String, String>) {
-        add(ConfigIssue(path, code, IssueSeverity.ERROR, arguments.toMap()))
+    private fun MutableList<ConfigIssue>.error(
+        path: String,
+        code: String,
+        vararg arguments: Pair<String, String>,
+        displayPath: String? = null,
+    ) {
+        add(ConfigIssue(path, code, IssueSeverity.ERROR, arguments.toMap(), displayPath))
     }
 
-    private fun MutableList<ConfigIssue>.warning(path: String, code: String, vararg arguments: Pair<String, String>) {
-        add(ConfigIssue(path, code, IssueSeverity.WARNING, arguments.toMap()))
+    private fun MutableList<ConfigIssue>.warning(
+        path: String,
+        code: String,
+        vararg arguments: Pair<String, String>,
+        displayPath: String? = null,
+    ) {
+        add(ConfigIssue(path, code, IssueSeverity.WARNING, arguments.toMap(), displayPath))
     }
 }

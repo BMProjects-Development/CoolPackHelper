@@ -62,4 +62,22 @@ class ConfigBehaviorTest {
         assertFalse(validHttpUri("file:///mods/example.jar") != null)
         assertFalse(validHttpUri("not a url") != null)
     }
+
+    @Test
+    fun `mod validation issues expose a human readable owner`() {
+        val config = PackHelperConfig(
+            mods = listOf(
+                RequiredMod(
+                    name = "Example Technology",
+                    modId = "example_technology",
+                    links = listOf(DownloadLink("Website", "not a url")),
+                )
+            )
+        )
+
+        val issue = ConfigValidator.validate(config).first { it.code == "invalid_url" }
+
+        assertEquals("mods[0].links[0].url", issue.path)
+        assertEquals("Example Technology · Website", issue.displayPath)
+    }
 }

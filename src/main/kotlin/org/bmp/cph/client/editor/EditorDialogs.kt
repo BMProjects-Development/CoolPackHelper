@@ -49,7 +49,7 @@ class EditorValidationScreen(
             (listWidth - 18).coerceIn(100, 620),
             45,
             issues,
-            titleOf = { it.path },
+            titleOf = { it.displayPath ?: it.path },
             subtitleOf = { it.localized(menuText) },
             accentOf = { 0xFFFF6B78.toInt() },
         )

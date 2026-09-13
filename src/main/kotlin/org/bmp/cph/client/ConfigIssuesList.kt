@@ -30,7 +30,7 @@ class ConfigIssuesList(
         private val issue: ConfigIssue,
         private val font: Font,
     ) : ObjectSelectionList.Entry<IssueEntry>() {
-        override fun getNarration(): Component = Component.literal("${issue.severity}: ${issue.path}. ${issue.localized(text)}")
+        override fun getNarration(): Component = Component.literal("${issue.severity}: ${issue.displayPath ?: issue.path}. ${issue.localized(text)}")
 
         override fun render(
             guiGraphics: GuiGraphics,
@@ -52,7 +52,7 @@ class ConfigIssuesList(
             guiGraphics.fill(left + 2, top + height - 1, left + width, top + height, 0x334D6077)
             guiGraphics.drawString(
                 font,
-                font.plainSubstrByWidth("${issue.severity}: ${issue.path}", (width - 14).coerceAtLeast(30)),
+                font.plainSubstrByWidth(issue.displayPath ?: issue.path, (width - 14).coerceAtLeast(30)),
                 left + 7,
                 top + 4,
                 accent,
