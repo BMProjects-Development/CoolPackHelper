@@ -89,25 +89,25 @@ class MissingModsScreen(
             val startX = (width - totalWidth) / 2
             val y = height - 27
             addRenderableWidget(button(text.recheckButton, startX, y, buttonWidth, ::recheck))
-            addRenderableWidget(
-                TechButton.builder(Component.translatable("cph.download.install_missing", results.size)) { openBulkDownload() }
-                    .style(TechButtonStyle.PRIMARY).bounds(startX + buttonWidth + 6, y, buttonWidth, 20).build()
-            )
+            addRenderableWidget(bulkDownloadButton(startX + buttonWidth + 6, y, buttonWidth))
             addRenderableWidget(button(text.openModsFolderButton, startX + (buttonWidth + 6) * 2, y, buttonWidth, ::openModsFolder, TechButtonStyle.GHOST))
             addRenderableWidget(button(text.continueButton, startX + (buttonWidth + 6) * 3, y, buttonWidth, { onClose() }, TechButtonStyle.GHOST))
         } else {
             val totalWidth = (width - 20).coerceAtMost(400)
             val half = (totalWidth - 6) / 2
             val startX = (width - totalWidth) / 2
-            addRenderableWidget(
-                TechButton.builder(Component.translatable("cph.download.install_missing", results.size)) { openBulkDownload() }
-                    .style(TechButtonStyle.PRIMARY).bounds(startX, height - 77, totalWidth, 20).build()
-            )
+            addRenderableWidget(bulkDownloadButton(startX, height - 77, totalWidth))
             addRenderableWidget(button(text.recheckButton, startX, height - 51, half, ::recheck))
             addRenderableWidget(button(text.openModsFolderButton, startX + half + 6, height - 51, half, ::openModsFolder))
             addRenderableWidget(button(text.continueButton, width / 2 - totalWidth / 2, height - 27, totalWidth, { onClose() }, TechButtonStyle.PRIMARY))
         }
     }
+
+    private fun bulkDownloadButton(x: Int, y: Int, width: Int): TechButton =
+        TechButton.builder(Component.translatable("cph.download.install_missing", results.size)) { openBulkDownload() }
+            .style(TechButtonStyle.PRIMARY).bounds(x, y, width, 20).build().also {
+                it.active = results.any { result -> result.mod.availableLinks().isNotEmpty() }
+            }
 
     private fun addTabs(y: Int) {
         val totalWidth = (width - 20).coerceAtMost(600)

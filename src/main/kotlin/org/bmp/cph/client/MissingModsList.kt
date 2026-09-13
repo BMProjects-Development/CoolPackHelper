@@ -57,6 +57,10 @@ class MissingModsList(
             .bounds(0, 0, 160, 20)
             .build()
 
+        init {
+            downloadButton.active = links.isNotEmpty()
+        }
+
         override fun children(): List<GuiEventListener> = listOf(detailsButton, downloadButton)
 
         override fun narratables(): List<NarratableEntry> = listOf(detailsButton, downloadButton)

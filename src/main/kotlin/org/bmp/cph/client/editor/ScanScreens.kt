@@ -100,12 +100,12 @@ class ScanScreen(
                     filter = candidate
                     rebuildWidgets()
                 }.style(if (filter == candidate) TechButtonStyle.PRIMARY else TechButtonStyle.GHOST)
-                    .bounds(x + index * (tabWidth + tabGap), 55, tabWidth, 20)
+                    .bounds(x + index * (tabWidth + tabGap), 64, tabWidth, 20)
                     .build()
             )
         }
         val visibleItems = completed.items.filter(filter::accepts)
-        val listTop = 80
+        val listTop = 89
         val listBottom = height - 34
         val listWidth = (width - 16).coerceAtLeast(120)
         val list = StyledActionList(
@@ -142,7 +142,10 @@ class ScanScreen(
                         },
                     ) {
                         if (!selected.add(item.artifact.fileName)) selected.remove(item.artifact.fileName)
-                        if (::importButton.isInitialized) importButton.message = tr("scan.import", selected.size)
+                        if (::importButton.isInitialized) {
+                            importButton.message = tr("scan.import", selected.size)
+                            importButton.active = selected.isNotEmpty()
+                        }
                     }
                 )
             },
@@ -152,6 +155,7 @@ class ScanScreen(
         val half = (w - 8) / 2
         importButton = TechButton.builder(tr("scan.import", selected.size)) { importSelected() }.style(TechButtonStyle.PRIMARY)
             .bounds(x, height - 27, half, 20).build()
+        importButton.active = selected.isNotEmpty()
         addRenderableWidget(importButton)
         addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(x + half + 8, height - 27, half, 20).build())
     }
@@ -171,10 +175,14 @@ class ScanScreen(
         val missing = completed.items.count { it.status == PlatformMatchStatus.NOT_FOUND }
         val unknown = completed.items.count { it.status == PlatformMatchStatus.UNKNOWN }
         drawHeader(guiGraphics, tr("scan.summary", found, missing, unknown))
-        completed.error?.let {
-            guiGraphics.drawCenteredString(font, font.plainSubstrByWidth(it, width - 32), width / 2, 45, 0xFF7777)
-        }
-        guiGraphics.drawCenteredString(font, tr("scan.exact_warning"), width / 2, 46, 0x75899D)
+        val notice = completed.error?.let(Component::literal) ?: tr("scan.exact_warning")
+        guiGraphics.drawCenteredString(
+            font,
+            font.plainSubstrByWidth(notice.string, (width - 32).coerceAtLeast(40)),
+            width / 2,
+            48,
+            if (completed.error == null) 0x75899D else 0xFFFF7777.toInt(),
+        )
     }
 
     override fun onClose() {
@@ -213,6 +221,7 @@ class LocalImportScreen(
 ) : EditorScreenBase(tr("import.title"), parent) {
     private var started = false
     private var artifacts: List<LocalModArtifact>? = null
+    private var errorMessage: String? = null
 
     override fun init() {
         if (!started) {
@@ -220,6 +229,7 @@ class LocalImportScreen(
             CompletableFuture.supplyAsync(PlatformScanner::inspectModsFolder).whenComplete { result, exception ->
                 Minecraft.getInstance().execute {
                     artifacts = result ?: emptyList()
+                    errorMessage = exception?.cause?.message ?: exception?.message
                     if (Minecraft.getInstance().screen === this) rebuildWidgets()
                 }
             }
@@ -228,21 +238,24 @@ class LocalImportScreen(
         val w = (width - 30).coerceAtMost(540)
         val x = (width - w) / 2
         val half = (w - 8) / 2
-        addRenderableWidget(
-            TechButton.builder(tr("import.add", result.size)) {
+        val import = TechButton.builder(tr("import.add", result.size)) {
                 val added = session.addDrafts(result.map(LocalModArtifact::toDraft))
                 Minecraft.getInstance().let {
                     SystemToast.add(it.toasts, SystemToast.SystemToastId.PERIODIC_NOTIFICATION, tr("scan.imported"), tr("scan.imported.count", added))
                 }
                 onClose()
             }.style(TechButtonStyle.PRIMARY).bounds(x, height - 27, half, 20).build()
-        )
+        import.active = result.isNotEmpty()
+        addRenderableWidget(import)
         addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(x + half + 8, height - 27, half, 20).build())
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         drawHeader(guiGraphics, tr(if (artifacts == null) "import.working" else "import.ready", artifacts?.size ?: 0))
-        guiGraphics.drawCenteredString(font, tr("import.hint"), width / 2, height / 2, 0x91A4B8)
+        val message = errorMessage?.let { tr("import.failed", it) } ?: tr("import.hint")
+        font.split(message, (width - 40).coerceAtLeast(40)).take(3).forEachIndexed { index, line ->
+            guiGraphics.drawCenteredString(font, line, width / 2, height / 2 + index * 10, if (errorMessage == null) 0x91A4B8 else 0xFFFF7777.toInt())
+        }
     }
 
     override fun onClose() {

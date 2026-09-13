@@ -5,6 +5,7 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.components.ContainerObjectSelectionList
 import net.minecraft.client.gui.components.EditBox
+import net.minecraft.client.gui.components.MultiLineEditBox
 import net.minecraft.client.gui.components.toasts.SystemToast
 import net.minecraft.client.gui.components.events.GuiEventListener
 import net.minecraft.client.gui.narration.NarratableEntry
@@ -145,6 +146,10 @@ class LinkEntryEditorScreen(
         }
     }
 
+    override fun onClose() {
+        if (!metadataLoading) super.onClose()
+    }
+
     private fun save() {
         commitWorking()
         onChanged()
@@ -165,22 +170,23 @@ private class DownloadSourceFieldsList(
     top: Int,
     private val rowWidth: Int,
     link: DownloadLink,
-) : ContainerObjectSelectionList<DownloadSourceFieldsList.FieldEntry>(minecraft, width, height, top, 42) {
+) : ContainerObjectSelectionList<DownloadSourceFieldsList.FieldEntry>(minecraft, width, height, top, 54) {
     data class Field(
         val label: Component,
         val value: () -> String,
         val maxLength: Int = 2048,
+        val wraps: Boolean = false,
         val changed: (String) -> Unit,
     )
 
     init {
         val fields = listOf(
             Field(tr("link.label"), { link.label.orEmpty() }, 256) { link.label = it.clean() },
-            Field(tr("link.url"), { link.url.orEmpty() }) { link.url = it.clean() },
+            Field(tr("link.url"), { link.url.orEmpty() }, wraps = true) { link.url = it.singleLine().clean() },
             Field(tr("link.project_id"), { link.projectId.orEmpty() }, 256) { link.projectId = it.clean() },
             Field(tr("link.version_id"), { link.versionId.orEmpty() }, 256) { link.versionId = it.clean() },
             Field(tr("link.file_id"), { link.fileId.orEmpty() }, 256) { link.fileId = it.clean() },
-            Field(tr("link.download_url"), { link.downloadUrl.orEmpty() }) { link.downloadUrl = it.clean() },
+            Field(tr("link.download_url"), { link.downloadUrl.orEmpty() }, wraps = true) { link.downloadUrl = it.singleLine().clean() },
             Field(tr("link.file_name"), { link.fileName.orEmpty() }, 256) { link.fileName = it.clean() },
             Field(tr("link.size"), { link.sizeBytes?.toString().orEmpty() }, 24) { link.sizeBytes = it.trim().toLongOrNull() },
             Field(tr("link.sha256"), { link.sha256.orEmpty() }, 64) { link.sha256 = it.clean() },
@@ -195,14 +201,15 @@ private class DownloadSourceFieldsList(
 
     class FieldEntry(fieldData: Field, private val font: Font, fieldWidth: Int) : Entry<FieldEntry>() {
         private val label = fieldData.label
-        private val field = StableEditBox(font, 0, 0, fieldWidth, 20, label).also {
-            it.value = fieldData.value()
-            it.setMaxLength(fieldData.maxLength)
-            it.setResponder(fieldData.changed)
-        }
+        private val singleLineField = if (!fieldData.wraps) StableEditBox(font, 0, 0, fieldWidth, 20, label).also {
+            it.value = fieldData.value(); it.setMaxLength(fieldData.maxLength); it.setResponder(fieldData.changed)
+        } else null
+        private val wrappedField = if (fieldData.wraps) MultiLineEditBox(font, 0, 0, fieldWidth, 32, label, label).also {
+            it.setCharacterLimit(fieldData.maxLength); it.value = fieldData.value(); it.setValueListener(fieldData.changed)
+        } else null
 
-        override fun children(): List<GuiEventListener> = listOf(field)
-        override fun narratables(): List<NarratableEntry> = listOf(field)
+        override fun children(): List<GuiEventListener> = listOfNotNull(singleLineField, wrappedField)
+        override fun narratables(): List<NarratableEntry> = listOfNotNull(singleLineField, wrappedField)
 
         override fun render(
             guiGraphics: GuiGraphics, index: Int, top: Int, left: Int, width: Int, height: Int,
@@ -211,11 +218,19 @@ private class DownloadSourceFieldsList(
             guiGraphics.fill(left, top, left + width, top + height - 2, if (hovered) 0xE0222D3E.toInt() else 0xC5161D29.toInt())
             guiGraphics.fill(left, top, left + 2, top + height - 2, 0xFF9B7BFF.toInt())
             guiGraphics.drawString(font, label, left + 7, top + 4, 0x90A7BC, false)
-            field.x = left + 7
-            field.y = top + 15
-            field.render(guiGraphics, mouseX, mouseY, partialTick)
+            singleLineField?.let {
+                it.x = left + 7
+                it.y = top + 15
+                it.render(guiGraphics, mouseX, mouseY, partialTick)
+            }
+            wrappedField?.let {
+                it.x = left + 7
+                it.y = top + 15
+                it.render(guiGraphics, mouseX, mouseY, partialTick)
+            }
         }
     }
 
     private fun String.clean(): String? = trim().takeIf(String::isNotBlank)
+    private fun String.singleLine(): String = replace("\r", "").replace("\n", "")
 }

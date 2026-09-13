@@ -7,7 +7,6 @@ import org.bmp.cph.Cph
 import org.bmp.cph.config.ModCategory
 import org.bmp.cph.config.RequiredMod
 import org.bmp.cph.config.validHttpUri
-import java.io.ByteArrayOutputStream
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -69,10 +68,12 @@ data class PlatformScanReport(
 )
 
 object PlatformScanner {
+    private const val MAX_METADATA_BYTES = 1024 * 1024
+    private const val MAX_API_RESPONSE_BYTES = 8 * 1024 * 1024
     private val gson = Gson()
     private val http = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(15))
-        .followRedirects(HttpClient.Redirect.NORMAL)
+        .followRedirects(HttpClient.Redirect.NEVER)
         .build()
 
     fun scanAsync(platform: ScanPlatform, curseForgeApiKey: String? = null): CompletableFuture<PlatformScanReport> =
@@ -97,25 +98,30 @@ object PlatformScanner {
     internal fun inspectModsFolder(): List<LocalModArtifact> {
         val directory = FMLPaths.MODSDIR.get()
         if (Files.notExists(directory)) return emptyList()
-        return Files.list(directory).use { stream ->
+        val jars = Files.list(directory).use { stream ->
             stream.filter(Files::isRegularFile)
                 .filter { it.fileName.toString().endsWith(".jar", ignoreCase = true) }
                 .sorted()
-                .map(::inspectJar)
-                .filter { it.modId != Cph.ID }
                 .toList()
+        }
+        return jars.mapNotNull { path ->
+            try {
+                inspectJar(path).takeUnless { it.modId == Cph.ID }
+            } catch (exception: Exception) {
+                Cph.LOGGER.warn("Skipping unreadable mod file {} during platform scan", path.fileName, exception)
+                null
+            }
         }
     }
 
     private fun inspectJar(path: Path): LocalModArtifact {
         val metadata = readMetadata(path)
-        val bytes = Files.readAllBytes(path)
-        val sha1 = MessageDigest.getInstance("SHA-1").digest(bytes).joinToString("") { "%02x".format(it) }
+        val (sha1, fingerprint) = hashes(path)
         return LocalModArtifact(
             path = path,
             fileName = path.fileName.toString(),
             sha1 = sha1,
-            curseForgeFingerprint = curseForgeFingerprint(bytes),
+            curseForgeFingerprint = fingerprint,
             name = metadata["displayName"] ?: path.fileName.toString().removeSuffix(".jar"),
             modId = metadata["modId"],
             version = metadata["version"],
@@ -127,7 +133,10 @@ object PlatformScanner {
     private fun readMetadata(path: Path): Map<String, String> = try {
         ZipFile(path.toFile()).use { zip ->
             val entry = zip.getEntry("META-INF/neoforge.mods.toml") ?: zip.getEntry("META-INF/mods.toml") ?: return emptyMap()
-            val text = zip.getInputStream(entry).bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
+            require(entry.size < 0 || entry.size <= MAX_METADATA_BYTES) { "Mod metadata is too large" }
+            val bytes = zip.getInputStream(entry).use { it.readNBytes(MAX_METADATA_BYTES + 1) }
+            require(bytes.size <= MAX_METADATA_BYTES) { "Mod metadata is too large" }
+            val text = String(bytes, StandardCharsets.UTF_8)
             val primaryBlock = text.substringAfter("[[mods]]", text)
             listOf("modId", "displayName", "version", "description", "displayURL")
                 .mapNotNull { key -> tomlValue(primaryBlock, key)?.let { key to it } }
@@ -191,7 +200,7 @@ object PlatformScanner {
             response.getAsJsonArray("exactMatches")?.forEach { element ->
                 val match = element.asJsonObject
                 val file = match.getAsJsonObject("file")
-                val fingerprint = file?.get("fileFingerprint")?.asLong ?: match.get("id")?.asLong ?: return@forEach
+                val fingerprint = file?.get("fileFingerprint")?.asLong ?: return@forEach
                 matched[fingerprint] = file?.get("modId")?.asString.orEmpty()
             }
         }
@@ -219,57 +228,96 @@ object PlatformScanner {
             .header("Content-Type", "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(body), StandardCharsets.UTF_8))
         headers.forEach(builder::header)
-        val response = http.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+        val response = http.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream())
+        val bytes = response.body().use { it.readNBytes(MAX_API_RESPONSE_BYTES + 1) }
+        require(bytes.size <= MAX_API_RESPONSE_BYTES) { "The platform response is too large" }
+        val responseBody = String(bytes, StandardCharsets.UTF_8)
         if (response.statusCode() !in 200..299) {
-            error("HTTP ${response.statusCode()}: ${response.body().take(240)}")
+            error("HTTP ${response.statusCode()}: ${responseBody.take(240)}")
         }
-        return gson.fromJson(response.body(), JsonObject::class.java)
+        return gson.fromJson(responseBody, JsonObject::class.java)
     }
 
     /** CurseForge's normalized MurmurHash2 fingerprint (whitespace bytes are ignored). */
     internal fun curseForgeFingerprint(source: ByteArray): Long {
-        val filtered = ByteArrayOutputStream(source.size)
-        source.forEach { byte ->
-            val value = byte.toInt() and 0xFF
-            if (value != 9 && value != 10 && value != 13 && value != 32) filtered.write(value)
+        val length = source.count(::isFingerprintByte)
+        val accumulator = Murmur2Accumulator(length)
+        source.forEach { byte -> if (isFingerprintByte(byte)) accumulator.add(byte.toInt() and 0xFF) }
+        return accumulator.finish()
+    }
+
+    private fun hashes(path: Path): Pair<String, Long> {
+        var normalizedLength = 0
+        Files.newInputStream(path).use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                for (index in 0 until count) if (isFingerprintByte(buffer[index])) normalizedLength++
+            }
         }
-        val data = filtered.toByteArray()
-        var hash = 1 xor data.size
-        var index = 0
-        var remaining = data.size
-        while (remaining >= 4) {
-            var k = (data[index].toInt() and 0xFF) or
-                ((data[index + 1].toInt() and 0xFF) shl 8) or
-                ((data[index + 2].toInt() and 0xFF) shl 16) or
-                ((data[index + 3].toInt() and 0xFF) shl 24)
-            k *= 0x5bd1e995
-            k = k xor (k ushr 24)
-            k *= 0x5bd1e995
+        val sha1 = MessageDigest.getInstance("SHA-1")
+        val fingerprint = Murmur2Accumulator(normalizedLength)
+        Files.newInputStream(path).use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                sha1.update(buffer, 0, count)
+                for (index in 0 until count) {
+                    val byte = buffer[index]
+                    if (isFingerprintByte(byte)) fingerprint.add(byte.toInt() and 0xFF)
+                }
+            }
+        }
+        return sha1.digest().joinToString("") { "%02x".format(it) } to fingerprint.finish()
+    }
+
+    private fun isFingerprintByte(byte: Byte): Boolean {
+        val value = byte.toInt() and 0xFF
+        return value != 9 && value != 10 && value != 13 && value != 32
+    }
+
+    private class Murmur2Accumulator(length: Int) {
+        private var hash = 1 xor length
+        private val tail = IntArray(4)
+        private var tailSize = 0
+
+        fun add(value: Int) {
+            tail[tailSize++] = value
+            if (tailSize == 4) {
+                var block = tail[0] or (tail[1] shl 8) or (tail[2] shl 16) or (tail[3] shl 24)
+                block *= 0x5bd1e995
+                block = block xor (block ushr 24)
+                block *= 0x5bd1e995
+                hash *= 0x5bd1e995
+                hash = hash xor block
+                tailSize = 0
+            }
+        }
+
+        fun finish(): Long {
+            when (tailSize) {
+                3 -> {
+                    hash = hash xor (tail[2] shl 16)
+                    hash = hash xor (tail[1] shl 8)
+                    hash = hash xor tail[0]
+                    hash *= 0x5bd1e995
+                }
+                2 -> {
+                    hash = hash xor (tail[1] shl 8)
+                    hash = hash xor tail[0]
+                    hash *= 0x5bd1e995
+                }
+                1 -> {
+                    hash = hash xor tail[0]
+                    hash *= 0x5bd1e995
+                }
+            }
+            hash = hash xor (hash ushr 13)
             hash *= 0x5bd1e995
-            hash = hash xor k
-            index += 4
-            remaining -= 4
+            hash = hash xor (hash ushr 15)
+            return hash.toLong() and 0xFFFF_FFFFL
         }
-        when (remaining) {
-            3 -> {
-                hash = hash xor ((data[index + 2].toInt() and 0xFF) shl 16)
-                hash = hash xor ((data[index + 1].toInt() and 0xFF) shl 8)
-                hash = hash xor (data[index].toInt() and 0xFF)
-                hash *= 0x5bd1e995
-            }
-            2 -> {
-                hash = hash xor ((data[index + 1].toInt() and 0xFF) shl 8)
-                hash = hash xor (data[index].toInt() and 0xFF)
-                hash *= 0x5bd1e995
-            }
-            1 -> {
-                hash = hash xor (data[index].toInt() and 0xFF)
-                hash *= 0x5bd1e995
-            }
-        }
-        hash = hash xor (hash ushr 13)
-        hash *= 0x5bd1e995
-        hash = hash xor (hash ushr 15)
-        return hash.toLong() and 0xFFFF_FFFFL
     }
 }

@@ -105,6 +105,7 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 dependencies {
     implementation 'thedarkcolour:kotlinforforge-neoforge:5.3.0'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation 'com.google.code.gson:gson:2.11.0'
 
     // Example mod dependency with JEI

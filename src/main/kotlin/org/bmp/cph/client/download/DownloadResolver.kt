@@ -22,10 +22,11 @@ import java.util.concurrent.CompletableFuture
 
 object DownloadResolver {
     private const val USER_AGENT = "BMP/CoolPackHelper/1.0.0"
+    private const val MAX_API_RESPONSE_BYTES = 4 * 1024 * 1024
     private val gson = Gson()
     private val http = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(12))
-        .followRedirects(HttpClient.Redirect.NORMAL)
+        .followRedirects(HttpClient.Redirect.NEVER)
         .build()
 
     fun resolveAsync(request: DownloadRequest): CompletableFuture<ResolvedDownload> = CompletableFuture.supplyAsync {
@@ -252,9 +253,12 @@ object DownloadResolver {
             .apply { headers.forEach(::header) }
             .GET()
             .build()
-        val response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
-        require(response.statusCode() in 200..299) { "HTTP ${response.statusCode()}: ${response.body().take(180)}" }
-        return gson.fromJson(response.body(), JsonElement::class.java)
+        val response = http.send(request, HttpResponse.BodyHandlers.ofInputStream())
+        val bytes = response.body().use { it.readNBytes(MAX_API_RESPONSE_BYTES + 1) }
+        require(bytes.size <= MAX_API_RESPONSE_BYTES) { "The API response is too large" }
+        val body = String(bytes, StandardCharsets.UTF_8)
+        require(response.statusCode() in 200..299) { "HTTP ${response.statusCode()}: ${body.take(180)}" }
+        return gson.fromJson(body, JsonElement::class.java)
     }
 
     private fun encodePath(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")

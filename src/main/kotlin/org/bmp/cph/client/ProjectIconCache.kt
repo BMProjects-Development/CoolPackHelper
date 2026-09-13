@@ -22,6 +22,8 @@ object ProjectIconCache {
 
     private const val MAX_ICON_BYTES = 1024 * 1024
     private const val MAX_ICON_DIMENSION = 1024
+    private const val MAX_CACHED_ICONS = 256
+    private const val MAX_FAILED_URLS = 512
     private val ready = ConcurrentHashMap<String, IconTexture>()
     private val loading = ConcurrentHashMap.newKeySet<String>()
     private val failed = ConcurrentHashMap.newKeySet<String>()
@@ -33,6 +35,7 @@ object ProjectIconCache {
     fun texture(url: String?): IconTexture? {
         val value = url?.takeIf(String::isNotBlank) ?: return null
         ready[value]?.let { return it }
+        if (ready.size + loading.size >= MAX_CACHED_ICONS || failed.size >= MAX_FAILED_URLS) return null
         if (value !in failed && loading.add(value)) {
             CompletableFuture.runAsync { load(value) }
         }
@@ -56,7 +59,8 @@ object ProjectIconCache {
                 response = http.send(request, HttpResponse.BodyHandlers.ofInputStream())
                 if (response.statusCode() in 300..399) {
                     response.body().close()
-                    require(redirects++ < 3) { "Too many icon redirects" }
+                    require(redirects < 3) { "Too many icon redirects" }
+                    redirects++
                     uri = uri.resolve(response.headers().firstValue("Location").orElseThrow())
                 } else break
             }
@@ -85,7 +89,7 @@ object ProjectIconCache {
                     ready[url] = IconTexture(texture, loadedImage.width, loadedImage.height)
                 } catch (exception: Exception) {
                     loadedImage.close()
-                    failed += url
+                    if (failed.size < MAX_FAILED_URLS) failed += url
                     Cph.LOGGER.debug("Could not register project icon {}", url, exception)
                 } finally {
                     loading -= url
@@ -94,7 +98,7 @@ object ProjectIconCache {
         } catch (exception: Exception) {
             image?.close()
             loading -= url
-            failed += url
+            if (failed.size < MAX_FAILED_URLS) failed += url
             Cph.LOGGER.debug("Could not load project icon {}", url, exception)
         }
     }

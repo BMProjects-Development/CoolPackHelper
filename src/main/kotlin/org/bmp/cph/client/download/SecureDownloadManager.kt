@@ -53,6 +53,7 @@ object SecureDownloadManager {
         if (!target.startsWith(modsDirectory)) return InstallResult(download, false, message = "Unsafe target path")
         val temporary = temporaryDirectory.resolve("${UUID.randomUUID()}-$safeName.part")
         val movedBackups = linkedMapOf<Path, Path>()
+        var installedTarget = false
 
         return try {
             Files.createDirectories(modsDirectory)
@@ -73,6 +74,7 @@ object SecureDownloadManager {
                 }
             }
             moveAtomically(temporary, target)
+            installedTarget = true
             val recordId = UUID.randomUUID().toString()
             InstallationJournal.record(
                 InstallationJournal.newRecord(
@@ -87,7 +89,12 @@ object SecureDownloadManager {
             InstallResult(download, true, target, recordId, "Installed successfully. Restart Minecraft to load the mod.")
         } catch (exception: Exception) {
             Cph.LOGGER.error("Could not securely install {}", download.mod.displayName(), exception)
-            Files.deleteIfExists(temporary)
+            try {
+                Files.deleteIfExists(temporary)
+                if (installedTarget) Files.deleteIfExists(target)
+            } catch (cleanupException: Exception) {
+                Cph.LOGGER.error("Could not remove files from the failed installation of {}", download.mod.displayName(), cleanupException)
+            }
             movedBackups.entries.toList().asReversed().forEach { (original, backup) ->
                 try {
                     if (Files.exists(backup)) Files.move(backup, original, StandardCopyOption.REPLACE_EXISTING)
@@ -118,7 +125,8 @@ object SecureDownloadManager {
             val current = http.send(request, HttpResponse.BodyHandlers.ofInputStream())
             if (current.statusCode() in 300..399) {
                 current.body().close()
-                require(redirects++ < MAX_REDIRECTS) { "Too many redirects" }
+                require(redirects < MAX_REDIRECTS) { "Too many redirects" }
+                redirects++
                 val location = current.headers().firstValue("Location").orElseThrow { IllegalStateException("Redirect without Location") }
                 uri = uri.resolve(location)
             } else {
@@ -130,6 +138,7 @@ object SecureDownloadManager {
         val declaredLength = received.headers().firstValueAsLong("Content-Length").orElse(-1L)
         val expectedSize = download.sizeBytes
         if (declaredLength > MAX_FILE_BYTES) error("The file exceeds the 512 MiB safety limit")
+        if (expectedSize != null && expectedSize > MAX_FILE_BYTES) error("The expected file exceeds the 512 MiB safety limit")
         if (expectedSize != null && declaredLength >= 0 && expectedSize != declaredLength) error("The server reported an unexpected file size")
 
         val algorithms = (download.hashes.keys + "SHA-256").associateWith(MessageDigest::getInstance)

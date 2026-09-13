@@ -13,6 +13,7 @@ import java.nio.file.StandardCopyOption
 import java.time.Instant
 
 object ConfigManager {
+    private const val MAX_CONFIG_BYTES = 8L * 1024L * 1024L
     private const val CONFIG_FILE = "coolpackhelper.json"
     private const val SCHEMA_FILE = "coolpackhelper.schema.json"
     private const val STATE_FILE = "coolpackhelper-state.json"
@@ -111,6 +112,8 @@ object ConfigManager {
                 Cph.LOGGER.info("Created default CoolPackHelper config at {}", path)
                 return
             }
+
+            require(Files.size(path) <= MAX_CONFIG_BYTES) { "The CoolPackHelper config exceeds the 8 MiB safety limit" }
 
             val root = Files.newBufferedReader(path, StandardCharsets.UTF_8).use {
                 JsonParser.parseReader(it)

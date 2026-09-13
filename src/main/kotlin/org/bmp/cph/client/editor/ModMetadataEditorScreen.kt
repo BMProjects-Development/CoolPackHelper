@@ -5,6 +5,7 @@ import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.ContainerObjectSelectionList
 import net.minecraft.client.gui.components.EditBox
+import net.minecraft.client.gui.components.MultiLineEditBox
 import net.minecraft.client.gui.components.toasts.SystemToast
 import net.minecraft.client.gui.components.events.GuiEventListener
 import net.minecraft.client.gui.narration.NarratableEntry
@@ -61,7 +62,7 @@ private class MetadataImportScreen(
     private val mod: RequiredMod,
     private val type: DownloadSourceType,
 ) : EditorScreenBase(tr("metadata.import.title", type.name), parent) {
-    private lateinit var projectField: EditBox
+    private lateinit var projectField: MultiLineEditBox
     private var keyField: EditBox? = null
     private var projectValue = mod.links.orEmpty().firstOrNull { it.resolvedType() == type }
         ?.let { it.projectId?.takeIf(String::isNotBlank) ?: it.url }.orEmpty()
@@ -74,14 +75,14 @@ private class MetadataImportScreen(
     override fun init() {
         val contentWidth = (width - 30).coerceAtMost(580)
         val left = (width - contentWidth) / 2
-        projectField = StableEditBox(font, left, 78, contentWidth, 20, tr("metadata.import.project")).also {
+        projectField = MultiLineEditBox(font, left, 78, contentWidth, 34, tr("metadata.import.project"), tr("metadata.import.project")).also {
             it.value = projectValue
-            it.setMaxLength(2048)
-            it.setResponder { value -> projectValue = value }
+            it.setCharacterLimit(2048)
+            it.setValueListener { value -> projectValue = value.replace("\r", "").replace("\n", "") }
             addRenderableWidget(it)
         }
         if (type == DownloadSourceType.CURSEFORGE) {
-            keyField = EditBox(font, left, 122, contentWidth, 20, tr("curseforge.key")).also {
+            keyField = EditBox(font, left, 132, contentWidth, 20, tr("curseforge.key")).also {
                 it.value = keyValue
                 it.setMaxLength(512)
                 it.setFormatter { value, _ -> FormattedCharSequence.forward("•".repeat(value.length), Style.EMPTY) }
@@ -130,6 +131,7 @@ private class MetadataImportScreen(
         ProjectMetadataService.fetchAsync(source).whenComplete { metadata, exception ->
             Minecraft.getInstance().execute {
                 loading = false
+                if (Minecraft.getInstance().screen !== this) return@execute
                 if (metadata != null) {
                     ProjectMetadataService.apply(metadata, mod, source)
                     val links = mod.links.orEmpty().toMutableList()
@@ -147,6 +149,10 @@ private class MetadataImportScreen(
             }
         }
     }
+
+    override fun onClose() {
+        if (!loading) super.onClose()
+    }
 }
 
 private class MetadataFieldsList(
@@ -156,13 +162,13 @@ private class MetadataFieldsList(
     top: Int,
     private val rowWidth: Int,
     mod: RequiredMod,
-) : ContainerObjectSelectionList<MetadataFieldsList.FieldEntry>(minecraft, width, height, top, 42) {
-    data class Field(val label: Component, val value: () -> String, val changed: (String) -> Unit)
+) : ContainerObjectSelectionList<MetadataFieldsList.FieldEntry>(minecraft, width, height, top, 54) {
+    data class Field(val label: Component, val value: () -> String, val wraps: Boolean = false, val changed: (String) -> Unit)
 
     init {
         listOf(
-            Field(tr("metadata.icon"), { mod.iconUrl.orEmpty() }) { mod.iconUrl = it.clean() },
-            Field(tr("metadata.project"), { mod.projectUrl.orEmpty() }) { mod.projectUrl = it.clean() },
+            Field(tr("metadata.icon"), { mod.iconUrl.orEmpty() }, wraps = true) { mod.iconUrl = it.singleLine().clean() },
+            Field(tr("metadata.project"), { mod.projectUrl.orEmpty() }, wraps = true) { mod.projectUrl = it.singleLine().clean() },
             Field(tr("metadata.authors"), { mod.authors.orEmpty().joinToString(", ") }) {
                 mod.authors = it.split(',').map(String::trim).filter(String::isNotBlank).distinct().take(32)
             },
@@ -175,14 +181,15 @@ private class MetadataFieldsList(
 
     class FieldEntry(data: Field, private val font: Font, fieldWidth: Int) : Entry<FieldEntry>() {
         private val label = data.label
-        private val field = StableEditBox(font, 0, 0, fieldWidth, 20, label).also {
-            it.value = data.value()
-            it.setMaxLength(4096)
-            it.setResponder(data.changed)
-        }
+        private val singleLineField = if (!data.wraps) StableEditBox(font, 0, 0, fieldWidth, 20, label).also {
+            it.value = data.value(); it.setMaxLength(4096); it.setResponder(data.changed)
+        } else null
+        private val wrappedField = if (data.wraps) MultiLineEditBox(font, 0, 0, fieldWidth, 32, label, label).also {
+            it.setCharacterLimit(4096); it.value = data.value(); it.setValueListener(data.changed)
+        } else null
 
-        override fun children(): List<GuiEventListener> = listOf(field)
-        override fun narratables(): List<NarratableEntry> = listOf(field)
+        override fun children(): List<GuiEventListener> = listOfNotNull(singleLineField, wrappedField)
+        override fun narratables(): List<NarratableEntry> = listOfNotNull(singleLineField, wrappedField)
 
         override fun render(
             guiGraphics: GuiGraphics, index: Int, top: Int, left: Int, width: Int, height: Int,
@@ -191,11 +198,19 @@ private class MetadataFieldsList(
             guiGraphics.fill(left, top, left + width, top + height - 2, if (hovered) 0xE0222D3E.toInt() else 0xC5161D29.toInt())
             guiGraphics.fill(left, top, left + 2, top + height - 2, 0xFF62D9FF.toInt())
             guiGraphics.drawString(font, label, left + 7, top + 4, 0x90A7BC, false)
-            field.x = left + 7
-            field.y = top + 15
-            field.render(guiGraphics, mouseX, mouseY, partialTick)
+            singleLineField?.let {
+                it.x = left + 7
+                it.y = top + 15
+                it.render(guiGraphics, mouseX, mouseY, partialTick)
+            }
+            wrappedField?.let {
+                it.x = left + 7
+                it.y = top + 15
+                it.render(guiGraphics, mouseX, mouseY, partialTick)
+            }
         }
     }
 
     private fun String.clean(): String? = trim().takeIf(String::isNotBlank)
+    private fun String.singleLine(): String = replace("\r", "").replace("\n", "")
 }

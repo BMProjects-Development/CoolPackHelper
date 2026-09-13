@@ -63,7 +63,10 @@ object DownloadSecurity {
                     (first == 169 && second == 254) ||
                     (first == 100 && second in 64..127) ||
                     (first == 192 && second == 0) ||
-                    (first == 198 && second in 18..19)
+                    (first == 192 && second == 88 && (bytes[2].toInt() and 0xFF) == 99) ||
+                    (first == 198 && second in 18..19) ||
+                    (first == 198 && second == 51 && (bytes[2].toInt() and 0xFF) == 100) ||
+                    (first == 203 && second == 0 && (bytes[2].toInt() and 0xFF) == 113)
             }
             is Inet6Address -> {
                 val first = bytes[0].toInt() and 0xFF

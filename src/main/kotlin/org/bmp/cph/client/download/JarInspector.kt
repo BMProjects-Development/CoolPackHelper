@@ -10,7 +10,7 @@ data class InspectedJar(
 )
 
 object JarInspector {
-    private const val MAX_METADATA_BYTES = 1024 * 1024L
+    private const val MAX_METADATA_BYTES = 1024 * 1024
     private const val MAX_ENTRIES = 100_000
 
     fun inspect(path: Path): InspectedJar {
@@ -21,12 +21,10 @@ object JarInspector {
             }
             val metadata = zip.getEntry("META-INF/neoforge.mods.toml") ?: zip.getEntry("META-INF/mods.toml")
                 ?: error("The file has no NeoForge mod metadata")
-            require(metadata.size in 0..MAX_METADATA_BYTES || metadata.size == -1L) { "The NeoForge metadata is too large" }
-            val text = zip.getInputStream(metadata).bufferedReader(StandardCharsets.UTF_8).use { reader ->
-                val value = reader.readText()
-                require(value.toByteArray(StandardCharsets.UTF_8).size <= MAX_METADATA_BYTES) { "The NeoForge metadata is too large" }
-                value
-            }
+            require(metadata.size in 0..MAX_METADATA_BYTES.toLong() || metadata.size == -1L) { "The NeoForge metadata is too large" }
+            val metadataBytes = zip.getInputStream(metadata).use { it.readNBytes(MAX_METADATA_BYTES + 1) }
+            require(metadataBytes.size <= MAX_METADATA_BYTES) { "The NeoForge metadata is too large" }
+            val text = String(metadataBytes, StandardCharsets.UTF_8)
             val blocks = text.split(Regex("(?m)^\\s*\\[\\[mods]]\\s*$")).drop(1)
             val versions = linkedMapOf<String, String>()
             blocks.forEach { block ->

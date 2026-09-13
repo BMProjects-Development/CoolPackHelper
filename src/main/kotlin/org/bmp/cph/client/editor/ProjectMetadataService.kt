@@ -29,10 +29,11 @@ data class ProjectMetadata(
 
 object ProjectMetadataService {
     private const val USER_AGENT = "BMP/CoolPackHelper/1.0.0 (https://github.com/BMPixel/CoolPackHelper)"
+    private const val MAX_API_RESPONSE_BYTES = 4 * 1024 * 1024
     private val gson = Gson()
     private val http = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(12))
-        .followRedirects(HttpClient.Redirect.NORMAL)
+        .followRedirects(HttpClient.Redirect.NEVER)
         .build()
 
     fun fetchAsync(source: DownloadLink): CompletableFuture<ProjectMetadata> = CompletableFuture.supplyAsync {
@@ -45,10 +46,10 @@ object ProjectMetadataService {
 
     fun apply(metadata: ProjectMetadata, mod: RequiredMod, source: DownloadLink, locale: String = "en_us") {
         mod.name = metadata.name
-        mod.iconUrl = metadata.iconUrl
+        metadata.iconUrl?.let { mod.iconUrl = it }
         mod.projectUrl = metadata.projectUrl
-        mod.authors = metadata.authors
-        mod.license = metadata.license
+        if (metadata.authors.isNotEmpty()) mod.authors = metadata.authors
+        metadata.license?.let { mod.license = it }
         metadata.summary?.takeIf(String::isNotBlank)?.let { summary ->
             mod.descriptions = mod.descriptions.orEmpty().toMutableMap().also { values ->
                 values[locale] = summary
@@ -122,9 +123,12 @@ object ProjectMetadataService {
             .header("User-Agent", USER_AGENT)
             .apply { headers.forEach(::header) }
             .GET().build()
-        val response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+        val response = http.send(request, HttpResponse.BodyHandlers.ofInputStream())
+        val bytes = response.body().use { it.readNBytes(MAX_API_RESPONSE_BYTES + 1) }
+        require(bytes.size <= MAX_API_RESPONSE_BYTES) { "Metadata response is too large" }
+        val body = String(bytes, StandardCharsets.UTF_8)
         require(response.statusCode() in 200..299) { "Metadata request failed with HTTP ${response.statusCode()}" }
-        return gson.fromJson(response.body(), JsonElement::class.java)
+        return gson.fromJson(body, JsonElement::class.java)
     }
 
     private fun modrinthId(value: String?): String? {

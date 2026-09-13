@@ -170,7 +170,7 @@ data class DownloadLink(
     var sha1: String? = null,
 ) {
     fun displayLabel(): String = label?.takeIf { it.isNotBlank() }
-        ?: validHttpUri(url)?.host?.removePrefix("www.")
+        ?: validHttpUri(downloadUrl ?: url)?.host?.removePrefix("www.")
         ?: "Link"
 
     fun resolvedType(): DownloadSourceType {

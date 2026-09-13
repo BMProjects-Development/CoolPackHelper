@@ -65,6 +65,13 @@ class ConfigBehaviorTest {
     }
 
     @Test
+    fun `download URL host is used when a source has no custom label`() {
+        val link = DownloadLink(downloadUrl = "https://cdn.example.com/releases/example.jar")
+
+        assertEquals("cdn.example.com", link.displayLabel())
+    }
+
+    @Test
     fun `mod validation issues expose a human readable owner`() {
         val config = PackHelperConfig(
             mods = listOf(
