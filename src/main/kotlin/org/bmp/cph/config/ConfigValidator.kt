@@ -39,7 +39,10 @@ object ConfigValidator {
     private val modFields = setOf(
         "enabled", "category", "name", "modId", "versionRange", "filePattern", "description", "descriptions", "links", "downloadUrl",
     )
-    private val linkFields = setOf("label", "url")
+    private val linkFields = setOf(
+        "label", "url", "type", "projectId", "versionId", "fileId", "downloadUrl", "fileName", "sizeBytes",
+        "sha256", "sha512", "sha1",
+    )
 
     fun validateStructure(root: JsonElement): List<ConfigIssue> = buildList {
         if (!root.isJsonObject) return@buildList
@@ -142,8 +145,36 @@ object ConfigValidator {
             links.forEachIndexed { linkIndex, link ->
                 val linkName = link.label?.takeIf { it.isNotBlank() } ?: "#${linkIndex + 1}"
                 val linkDisplayPath = "$modDisplayName · $linkName"
-                if (validHttpUri(link.url) == null) {
+                if (validHttpUri(link.url) == null && validHttpUri(link.downloadUrl) == null && link.projectId.isNullOrBlank()) {
                     error("$path.links[$linkIndex].url", "invalid_url", displayPath = linkDisplayPath)
+                }
+                if (link.type != null && DownloadSourceType.entries.none { it.name.equals(link.type, ignoreCase = true) }) {
+                    error(
+                        "$path.links[$linkIndex].type",
+                        "unknown_source_type",
+                        "value" to link.type.orEmpty(),
+                        displayPath = linkDisplayPath,
+                    )
+                }
+                link.sizeBytes?.let { size ->
+                    if (size <= 0) error("$path.links[$linkIndex].sizeBytes", "invalid_file_size", displayPath = linkDisplayPath)
+                }
+                listOf(
+                    Triple("sha256", link.sha256, 64),
+                    Triple("sha512", link.sha512, 128),
+                    Triple("sha1", link.sha1, 40),
+                ).forEach { (algorithm, hash, length) ->
+                    if (!hash.isNullOrBlank() && !hash.matches(Regex("^[0-9a-fA-F]{$length}$"))) {
+                        error(
+                            "$path.links[$linkIndex].$algorithm",
+                            "invalid_hash",
+                            "algorithm" to algorithm.uppercase(),
+                            displayPath = linkDisplayPath,
+                        )
+                    }
+                }
+                if (link.resolvedType() == DownloadSourceType.DIRECT && link.sha256.isNullOrBlank() && link.sha512.isNullOrBlank()) {
+                    warning("$path.links[$linkIndex].sha256", "missing_integrity_hash", displayPath = linkDisplayPath)
                 }
                 if (link.label.isNullOrBlank()) {
                     warning("$path.links[$linkIndex].label", "missing_link_label", displayPath = linkDisplayPath)

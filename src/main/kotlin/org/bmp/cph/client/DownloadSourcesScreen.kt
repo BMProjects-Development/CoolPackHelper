@@ -1,25 +1,24 @@
 package org.bmp.cph.client
 
 import net.minecraft.client.gui.GuiGraphics
-import net.minecraft.client.gui.screens.ConfirmLinkScreen
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import org.bmp.cph.config.DownloadLink
-import org.bmp.cph.config.RequiredMod
 import org.bmp.cph.config.ResolvedMenuText
-import org.bmp.cph.config.validHttpUri
+import org.bmp.cph.client.download.SecureDownloadScreen
 import org.bmp.cph.client.editor.EditorScreenBase
 import org.bmp.cph.client.editor.TechButton
 import org.bmp.cph.client.editor.TechButtonStyle
 import org.bmp.cph.client.editor.RowAction
+import org.bmp.cph.client.editor.RowBadge
 import org.bmp.cph.client.editor.StyledActionList
 
 class DownloadSourcesScreen(
     parent: Screen,
-    private val mod: RequiredMod,
+    private val result: ModCheckResult,
     private val links: List<DownloadLink>,
     private val text: ResolvedMenuText,
-) : EditorScreenBase(Component.literal(text.sourcesTitle.replace("{mod}", mod.displayName())), parent) {
+) : EditorScreenBase(Component.literal(text.sourcesTitle.replace("{mod}", result.mod.displayName())), parent) {
     override fun init() {
         val buttonWidth = (width - 32).coerceIn(100, 360)
         val x = (width - buttonWidth) / 2
@@ -33,18 +32,17 @@ class DownloadSourcesScreen(
             40,
             links,
             titleOf = { it.displayLabel() },
-            subtitleOf = { it.url.orEmpty() },
+            subtitleOf = { it.downloadUrl?.takeIf(String::isNotBlank) ?: it.url.orEmpty() },
             accentOf = { 0xFF62D9FF.toInt() },
+            badgeOf = { RowBadge(Component.literal(it.resolvedType().name), 0xFF62D9FF.toInt()) },
             actionsOf = { link ->
-                val uri = validHttpUri(link.url)
                 listOf(
                     RowAction(
                         label = { Component.literal(text.downloadButton) },
                         width = 82,
                         style = { TechButtonStyle.PRIMARY },
-                        enabled = { uri != null },
-                        tooltip = uri?.let { Component.literal(it.toString()) },
-                    ) { if (uri != null) ConfirmLinkScreen.confirmLinkNow(this, uri, true) }
+                        tooltip = Component.literal(link.downloadUrl ?: link.url.orEmpty()),
+                    ) { minecraft?.setScreen(SecureDownloadScreen.forSource(this, result, link)) }
                 )
             },
         )

@@ -156,7 +156,7 @@ object PlatformScanner {
             val response = sendJson(
                 "https://api.modrinth.com/v2/version_files",
                 body,
-                mapOf("User-Agent" to "BMP/CoolPackHelper/1.3.0 (https://github.com/BMPixel/CoolPackHelper)"),
+                mapOf("User-Agent" to "BMP/CoolPackHelper/1.0.0 (https://github.com/BMPixel/CoolPackHelper)"),
             )
             response.entrySet().forEach { (hash, value) ->
                 value.takeIf { it.isJsonObject }?.asJsonObject?.get("project_id")?.asString?.let { matches[hash] = it }

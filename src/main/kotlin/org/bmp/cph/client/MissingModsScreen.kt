@@ -4,7 +4,6 @@ import net.minecraft.Util
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.toasts.SystemToast
-import net.minecraft.client.gui.screens.ConfirmLinkScreen
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import net.neoforged.fml.loading.FMLPaths
@@ -13,7 +12,7 @@ import org.bmp.cph.config.ConfigManager
 import org.bmp.cph.config.MenuTextResolver
 import org.bmp.cph.config.ModCategory
 import org.bmp.cph.config.ResolvedMenuText
-import org.bmp.cph.config.validHttpUri
+import org.bmp.cph.client.download.SecureDownloadScreen
 import org.bmp.cph.client.editor.EditorScreenBase
 import org.bmp.cph.client.editor.TechButton
 import org.bmp.cph.client.editor.TechButtonStyle
@@ -34,7 +33,7 @@ class MissingModsScreen(
         compactHeader = height < 280
         listTop = if (compactHeader) 72 else 98
         val wideFooter = width >= 560
-        val footerTop = height - if (wideFooter) 34 else 58
+        val footerTop = height - if (wideFooter) 34 else 84
         listBottom = footerTop
         val listHeight = (footerTop - listTop).coerceAtLeast(40)
         val listWidth = (width - 16).coerceAtLeast(120)
@@ -86,16 +85,24 @@ class MissingModsScreen(
     private fun addFooterButtons(wide: Boolean) {
         if (wide) {
             val totalWidth = (width - 24).coerceAtMost(720)
-            val buttonWidth = (totalWidth - 12) / 3
+            val buttonWidth = (totalWidth - 18) / 4
             val startX = (width - totalWidth) / 2
             val y = height - 27
             addRenderableWidget(button(text.recheckButton, startX, y, buttonWidth, ::recheck))
-            addRenderableWidget(button(text.openModsFolderButton, startX + buttonWidth + 6, y, buttonWidth, ::openModsFolder, TechButtonStyle.GHOST))
-            addRenderableWidget(button(text.continueButton, startX + (buttonWidth + 6) * 2, y, buttonWidth, { onClose() }, TechButtonStyle.PRIMARY))
+            addRenderableWidget(
+                TechButton.builder(Component.translatable("cph.download.install_missing", results.size)) { openBulkDownload() }
+                    .style(TechButtonStyle.PRIMARY).bounds(startX + buttonWidth + 6, y, buttonWidth, 20).build()
+            )
+            addRenderableWidget(button(text.openModsFolderButton, startX + (buttonWidth + 6) * 2, y, buttonWidth, ::openModsFolder, TechButtonStyle.GHOST))
+            addRenderableWidget(button(text.continueButton, startX + (buttonWidth + 6) * 3, y, buttonWidth, { onClose() }, TechButtonStyle.GHOST))
         } else {
             val totalWidth = (width - 20).coerceAtMost(400)
             val half = (totalWidth - 6) / 2
             val startX = (width - totalWidth) / 2
+            addRenderableWidget(
+                TechButton.builder(Component.translatable("cph.download.install_missing", results.size)) { openBulkDownload() }
+                    .style(TechButtonStyle.PRIMARY).bounds(startX, height - 77, totalWidth, 20).build()
+            )
             addRenderableWidget(button(text.recheckButton, startX, height - 51, half, ::recheck))
             addRenderableWidget(button(text.openModsFolderButton, startX + half + 6, height - 51, half, ::openModsFolder))
             addRenderableWidget(button(text.continueButton, width / 2 - totalWidth / 2, height - 27, totalWidth, { onClose() }, TechButtonStyle.PRIMARY))
@@ -131,12 +138,16 @@ class MissingModsScreen(
     ): TechButton = TechButton.builder(Component.literal(label)) { action() }.style(style).bounds(x, y, width, 20).build()
 
     private fun openDownload(result: ModCheckResult) {
-        val links = result.mod.availableLinks().filter { validHttpUri(it.url) != null }
+        val links = result.mod.availableLinks()
         if (links.size == 1) {
-            ConfirmLinkScreen.confirmLinkNow(this, validHttpUri(links.first().url)!!, true)
+            minecraft?.setScreen(SecureDownloadScreen.forSource(this, result, links.first()))
         } else if (links.isNotEmpty()) {
-            minecraft?.setScreen(DownloadSourcesScreen(this, result.mod, links, text))
+            minecraft?.setScreen(DownloadSourcesScreen(this, result, links, text))
         }
+    }
+
+    private fun openBulkDownload() {
+        minecraft?.setScreen(SecureDownloadScreen.forMissing(this, results))
     }
 
     private fun openDetails(result: ModCheckResult) {

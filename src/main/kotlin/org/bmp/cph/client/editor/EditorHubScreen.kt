@@ -7,6 +7,7 @@ import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import org.bmp.cph.client.MissingModDetector
 import org.bmp.cph.client.MissingModsScreen
+import org.bmp.cph.client.download.InstallationHistoryScreen
 import org.bmp.cph.config.ConfigValidator
 import org.bmp.cph.config.IssueSeverity
 import org.bmp.cph.config.MenuTextResolver
@@ -44,6 +45,9 @@ class EditorHubScreen(
         }
         cards += Card("C", tr("scan.curseforge"), tr("scan.curseforge.hint")) {
             minecraft?.setScreen(CurseForgeKeyScreen(this, session))
+        }
+        cards += Card("↶", tr("history"), tr("history.hint")) {
+            minecraft?.setScreen(InstallationHistoryScreen(this))
         }
 
         val columns = if (width >= 620 || height < 360) 2 else 1

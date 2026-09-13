@@ -3,7 +3,7 @@ package org.bmp.cph.config
 import com.google.gson.annotations.SerializedName
 import java.net.URI
 
-const val CONFIG_SCHEMA_VERSION = 3
+const val CONFIG_SCHEMA_VERSION = 4
 
 data class PackHelperConfig(
     @SerializedName("\$schema")
@@ -151,10 +151,53 @@ data class RequiredMod(
 data class DownloadLink(
     var label: String? = null,
     var url: String? = null,
+    var type: String? = null,
+    var projectId: String? = null,
+    var versionId: String? = null,
+    var fileId: String? = null,
+    var downloadUrl: String? = null,
+    var fileName: String? = null,
+    var sizeBytes: Long? = null,
+    var sha256: String? = null,
+    var sha512: String? = null,
+    var sha1: String? = null,
 ) {
     fun displayLabel(): String = label?.takeIf { it.isNotBlank() }
         ?: validHttpUri(url)?.host?.removePrefix("www.")
         ?: "Link"
+
+    fun resolvedType(): DownloadSourceType {
+        DownloadSourceType.entries.firstOrNull { it.name.equals(type, ignoreCase = true) }?.let { return it }
+        val host = validHttpUri(downloadUrl ?: url)?.host?.lowercase().orEmpty()
+        return when {
+            host == "modrinth.com" || host.endsWith(".modrinth.com") -> DownloadSourceType.MODRINTH
+            host == "curseforge.com" || host.endsWith(".curseforge.com") || host.endsWith(".forgecdn.net") -> DownloadSourceType.CURSEFORGE
+            host == "github.com" || host.endsWith(".githubusercontent.com") -> DownloadSourceType.GITHUB_RELEASE
+            downloadUrl != null -> DownloadSourceType.DIRECT
+            else -> DownloadSourceType.PAGE
+        }
+    }
+
+    fun strongestHash(): Pair<String, String>? = when {
+        !sha512.isNullOrBlank() -> "SHA-512" to sha512!!.trim().lowercase()
+        !sha256.isNullOrBlank() -> "SHA-256" to sha256!!.trim().lowercase()
+        !sha1.isNullOrBlank() -> "SHA-1" to sha1!!.trim().lowercase()
+        else -> null
+    }
+}
+
+enum class DownloadSourceType {
+    MODRINTH,
+    CURSEFORGE,
+    GITHUB_RELEASE,
+    DIRECT,
+    PAGE,
+}
+
+enum class DownloadTrustLevel {
+    PLATFORM,
+    REPOSITORY,
+    UNVERIFIED,
 }
 
 data class ResolvedMenuText(
@@ -274,8 +317,17 @@ private fun defaultExampleMods(): List<RequiredMod> = listOf(
             "ru_ru" to "Добавляет книгу заданий, используемую этой сборкой.",
         ),
         links = listOf(
-            DownloadLink("CurseForge", "https://www.curseforge.com/minecraft/mc-mods/ftb-quests-forge"),
-            DownloadLink("Modrinth", "https://modrinth.com/mod/ftb-quests"),
+            DownloadLink(
+                label = "Modrinth",
+                url = "https://modrinth.com/mod/ftb-quests",
+                type = DownloadSourceType.MODRINTH.name,
+                projectId = "ftb-quests",
+            ),
+            DownloadLink(
+                label = "CurseForge",
+                url = "https://www.curseforge.com/minecraft/mc-mods/ftb-quests-forge",
+                type = DownloadSourceType.CURSEFORGE.name,
+            ),
         ),
     ),
     RequiredMod(
@@ -289,7 +341,11 @@ private fun defaultExampleMods(): List<RequiredMod> = listOf(
             "ru_ru" to "Добавляет команды и общий прогресс выполнения заданий.",
         ),
         links = listOf(
-            DownloadLink("CurseForge", "https://www.curseforge.com/minecraft/mc-mods/ftb-teams-forge"),
+            DownloadLink(
+                label = "CurseForge",
+                url = "https://www.curseforge.com/minecraft/mc-mods/ftb-teams-forge",
+                type = DownloadSourceType.CURSEFORGE.name,
+            ),
         ),
     ),
 )
@@ -389,6 +445,10 @@ private fun englishValidationMessages(): Map<String, String> = mapOf(
     "invalid_version_range" to "Invalid version range '{value}': {details}",
     "missing_links" to "Add at least one download link.",
     "invalid_url" to "Only a valid HTTP or HTTPS URL is allowed.",
+    "unknown_source_type" to "Unknown download source type '{value}'.",
+    "invalid_file_size" to "Expected file size must be greater than zero.",
+    "invalid_hash" to "The configured {algorithm} hash has an invalid length or contains non-hexadecimal characters.",
+    "missing_integrity_hash" to "Add SHA-256 or SHA-512 before enabling automatic downloads from this direct source.",
     "missing_link_label" to "The website domain will be used as the link label.",
     "empty_config" to "The config file is empty.",
     "parse_error" to "Could not parse the config: {details}",
@@ -413,6 +473,10 @@ private fun russianValidationMessages(): Map<String, String> = mapOf(
     "invalid_version_range" to "Некорректный диапазон версий '{value}': {details}",
     "missing_links" to "Добавьте хотя бы одну ссылку для скачивания.",
     "invalid_url" to "Разрешены только корректные HTTP- или HTTPS-ссылки.",
+    "unknown_source_type" to "Неизвестный тип источника загрузки: '{value}'.",
+    "invalid_file_size" to "Ожидаемый размер файла должен быть больше нуля.",
+    "invalid_hash" to "Хеш {algorithm} имеет неверную длину или содержит недопустимые символы.",
+    "missing_integrity_hash" to "Для автоматической загрузки с прямого источника укажите SHA-256 или SHA-512.",
     "missing_link_label" to "В качестве подписи будет использован домен сайта.",
     "empty_config" to "Файл конфигурации пуст.",
     "parse_error" to "Не удалось прочитать конфиг: {details}",

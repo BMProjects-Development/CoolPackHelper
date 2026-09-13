@@ -98,11 +98,25 @@
     "link": {
       "type": "object",
       "additionalProperties": false,
+      "anyOf": [
+        { "required": ["url"] },
+        { "required": ["downloadUrl"] },
+        { "required": ["projectId"] }
+      ],
       "properties": {
         "label": { "type": "string" },
-        "url": { "type": "string", "format": "uri", "pattern": "^https?://" }
-      },
-      "required": ["url"]
+        "url": { "type": "string", "format": "uri", "pattern": "^https?://" },
+        "type": { "enum": ["MODRINTH", "CURSEFORGE", "GITHUB_RELEASE", "DIRECT", "PAGE"] },
+        "projectId": { "type": "string" },
+        "versionId": { "type": "string" },
+        "fileId": { "type": "string" },
+        "downloadUrl": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "fileName": { "type": "string", "pattern": "^[^/\\\\]+\\.jar$" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+        "sha512": { "type": "string", "pattern": "^[0-9a-fA-F]{128}$" },
+        "sha1": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" }
+      }
     },
     "mod": {
       "type": "object",

@@ -5,14 +5,13 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.narration.NarrationElementOutput
 import net.minecraft.client.gui.narration.NarratableEntry
-import net.minecraft.client.gui.screens.ConfirmLinkScreen
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import net.minecraft.util.FormattedCharSequence
 import net.neoforged.neoforge.client.gui.widget.ScrollPanel
 import org.bmp.cph.config.ModCategory
 import org.bmp.cph.config.ResolvedMenuText
-import org.bmp.cph.config.validHttpUri
+import org.bmp.cph.client.download.SecureDownloadScreen
 import org.bmp.cph.client.editor.EditorScreenBase
 import org.bmp.cph.client.editor.TechButton
 import org.bmp.cph.client.editor.TechButtonStyle
@@ -52,12 +51,12 @@ class ModDetailsScreen(
 
         val gap = 6
         val buttonWidth = (contentWidth - gap) / 2
-        addRenderableWidget(
-            TechButton.builder(Component.literal(downloadLabel())) { openDownload() }
+        val downloadButton = TechButton.builder(Component.literal(downloadLabel())) { openDownload() }
                 .style(TechButtonStyle.PRIMARY)
                 .bounds(left, height - 27, buttonWidth, 20)
                 .build()
-        )
+        downloadButton.active = result.mod.availableLinks().isNotEmpty()
+        addRenderableWidget(downloadButton)
         addRenderableWidget(
             TechButton.builder(Component.literal(text.backButton)) { onClose() }
                 .style(TechButtonStyle.GHOST)
@@ -107,11 +106,11 @@ class ModDetailsScreen(
     }
 
     private fun openDownload() {
-        val links = result.mod.availableLinks().filter { validHttpUri(it.url) != null }
+        val links = result.mod.availableLinks()
         if (links.size == 1) {
-            ConfirmLinkScreen.confirmLinkNow(this, validHttpUri(links.first().url)!!, true)
+            minecraft?.setScreen(SecureDownloadScreen.forSource(this, result, links.first()))
         } else if (links.isNotEmpty()) {
-            minecraft?.setScreen(DownloadSourcesScreen(this, result.mod, links, text))
+            minecraft?.setScreen(DownloadSourcesScreen(this, result, links, text))
         }
     }
 
