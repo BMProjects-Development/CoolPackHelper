@@ -61,10 +61,11 @@ private class ModEditorContentList(
     openMetadata: () -> Unit,
 ) : ContainerObjectSelectionList<ModEditorContentList.EditorEntry>(minecraft, width, height, top, 42) {
     init {
-        addEntry(FieldEntry(tr("mod.name"), mod.name.orEmpty(), minecraft.font) { mod.name = it.trim() })
-        addEntry(FieldEntry(tr("mod.id"), mod.modId.orEmpty(), minecraft.font) { mod.modId = it.trim() })
-        addEntry(FieldEntry(tr("mod.version"), mod.versionRange.orEmpty(), minecraft.font) { mod.versionRange = it.trim() })
-        addEntry(FieldEntry(tr("mod.pattern"), mod.filePattern.orEmpty(), minecraft.font) { mod.filePattern = it.trim() })
+        val fieldWidth = (rowWidth - 14).coerceAtLeast(20)
+        addEntry(FieldEntry(tr("mod.name"), mod.name.orEmpty(), minecraft.font, fieldWidth) { mod.name = it.trim() })
+        addEntry(FieldEntry(tr("mod.id"), mod.modId.orEmpty(), minecraft.font, fieldWidth) { mod.modId = it.trim() })
+        addEntry(FieldEntry(tr("mod.version"), mod.versionRange.orEmpty(), minecraft.font, fieldWidth) { mod.versionRange = it.trim() })
+        addEntry(FieldEntry(tr("mod.pattern"), mod.filePattern.orEmpty(), minecraft.font, fieldWidth) { mod.filePattern = it.trim() })
         addEntry(
             ActionEntry(
                 listOf(
@@ -100,9 +101,10 @@ private class ModEditorContentList(
         private val label: Component,
         value: String,
         private val font: Font,
+        fieldWidth: Int,
         changed: (String) -> Unit,
     ) : EditorEntry() {
-        private val field = EditBox(font, 0, 0, 100, 20, label).also {
+        private val field = StableEditBox(font, 0, 0, fieldWidth, 20, label).also {
             it.value = value
             it.setMaxLength(4096)
             it.setResponder(changed)
@@ -119,7 +121,6 @@ private class ModEditorContentList(
             guiGraphics.drawString(font, label, left + 7, top + 4, 0x90A7BC, false)
             field.x = left + 7
             field.y = top + 15
-            field.width = (width - 14).coerceAtLeast(20)
             field.render(guiGraphics, mouseX, mouseY, partialTick)
         }
     }

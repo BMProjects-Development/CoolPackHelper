@@ -187,15 +187,15 @@ private class DownloadSourceFieldsList(
             Field(tr("link.sha512"), { link.sha512.orEmpty() }, 128) { link.sha512 = it.clean() },
             Field(tr("link.sha1"), { link.sha1.orEmpty() }, 40) { link.sha1 = it.clean() },
         )
-        fields.forEach { addEntry(FieldEntry(it, minecraft.font)) }
+        fields.forEach { addEntry(FieldEntry(it, minecraft.font, (rowWidth - 14).coerceAtLeast(20))) }
     }
 
     override fun getRowWidth(): Int = rowWidth
     override fun getScrollbarPosition(): Int = x + width - 7
 
-    class FieldEntry(fieldData: Field, private val font: Font) : Entry<FieldEntry>() {
+    class FieldEntry(fieldData: Field, private val font: Font, fieldWidth: Int) : Entry<FieldEntry>() {
         private val label = fieldData.label
-        private val field = EditBox(font, 0, 0, 100, 20, label).also {
+        private val field = StableEditBox(font, 0, 0, fieldWidth, 20, label).also {
             it.value = fieldData.value()
             it.setMaxLength(fieldData.maxLength)
             it.setResponder(fieldData.changed)
@@ -213,7 +213,6 @@ private class DownloadSourceFieldsList(
             guiGraphics.drawString(font, label, left + 7, top + 4, 0x90A7BC, false)
             field.x = left + 7
             field.y = top + 15
-            field.width = (width - 14).coerceAtLeast(20)
             field.render(guiGraphics, mouseX, mouseY, partialTick)
         }
     }

@@ -2,6 +2,9 @@ package org.bmp.cph.client.editor
 
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.components.ContainerObjectSelectionList
+import net.minecraft.client.gui.components.events.GuiEventListener
+import net.minecraft.client.gui.narration.NarratableEntry
 import net.minecraft.client.gui.components.toasts.SystemToast
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
@@ -12,67 +15,51 @@ import org.bmp.cph.config.ConfigValidator
 import org.bmp.cph.config.IssueSeverity
 import org.bmp.cph.config.MenuTextResolver
 
+private data class EditorHubCard(
+    val glyph: String,
+    val title: Component,
+    val description: Component,
+    val action: () -> Unit,
+)
+
 class EditorHubScreen(
     parent: Screen,
     private val session: EditorSession = EditorSession.open(),
 ) : EditorScreenBase(tr("title"), parent) {
-    private data class Card(
-        val glyph: String,
-        val title: Component,
-        val description: Component,
-        val action: () -> Unit,
-    )
-
-    private val cards = mutableListOf<Card>()
-    private var cardBounds = emptyList<IntArray>()
+    private val cards = mutableListOf<EditorHubCard>()
 
     override fun init() {
         cards.clear()
-        cards += Card("◇", tr("requirements"), tr("requirements.hint")) {
+        cards += EditorHubCard("◇", tr("requirements"), tr("requirements.hint")) {
             previewRequirements()
         }
-        cards += Card("⚙", tr("general"), tr("general.hint")) {
+        cards += EditorHubCard("⚙", tr("general"), tr("general.hint")) {
             minecraft?.setScreen(GeneralEditorScreen(this, session))
         }
-        cards += Card("▦", tr("mods"), tr("mods.hint")) {
+        cards += EditorHubCard("▦", tr("mods"), tr("mods.hint")) {
             minecraft?.setScreen(ModsEditorScreen(this, session))
         }
-        cards += Card("文", tr("translations"), tr("translations.hint")) {
+        cards += EditorHubCard("文", tr("translations"), tr("translations.hint")) {
             minecraft?.setScreen(MenuTranslationsScreen(this, session))
         }
-        cards += Card("M", tr("scan.modrinth"), tr("scan.modrinth.hint")) {
+        cards += EditorHubCard("M", tr("scan.modrinth"), tr("scan.modrinth.hint")) {
             minecraft?.setScreen(ScanScreen(this, session, ScanPlatform.MODRINTH))
         }
-        cards += Card("C", tr("scan.curseforge"), tr("scan.curseforge.hint")) {
+        cards += EditorHubCard("C", tr("scan.curseforge"), tr("scan.curseforge.hint")) {
             minecraft?.setScreen(CurseForgeKeyScreen(this, session))
         }
-        cards += Card("↶", tr("history"), tr("history.hint")) {
+        cards += EditorHubCard("↶", tr("history"), tr("history.hint")) {
             minecraft?.setScreen(InstallationHistoryScreen(this))
         }
 
-        val columns = if (width >= 620 || height < 360) 2 else 1
-        val gap = 8
-        val contentWidth = (width - 24).coerceAtMost(760)
-        val cardWidth = (contentWidth - gap * (columns - 1)) / columns
-        val availableHeight = height - 102
-        val rows = (cards.size + columns - 1) / columns
-        val cardHeight = ((availableHeight - gap * (rows - 1)) / rows).coerceIn(44, 72)
-        val left = (width - contentWidth) / 2
-        val top = 48
-        cardBounds = cards.mapIndexed { index, _ ->
-            val col = index % columns
-            val row = index / columns
-            intArrayOf(left + col * (cardWidth + gap), top + row * (cardHeight + gap), cardWidth, cardHeight)
-        }
-        cardBounds.forEachIndexed { index, bound ->
-            addRenderableWidget(
-                TechButton.builder(Component.literal("${cards[index].glyph}  ").append(cards[index].title)) { cards[index].action() }
-                    .subtitle(cards[index].description)
-                    .style(TechButtonStyle.CARD)
-                    .bounds(bound[0], bound[1], bound[2], bound[3])
-                    .build()
-            )
-        }
+        val columns = if (width >= 620) 2 else 1
+        val listWidth = (width - 16).coerceAtLeast(120)
+        val list = EditorHubCardsList(
+            minecraft ?: Minecraft.getInstance(), listWidth, (height - 83).coerceAtLeast(38), 49,
+            (listWidth - 18).coerceIn(100, 760), columns, cards,
+        )
+        list.x = 8
+        addRenderableWidget(list)
 
         val footerWidth = (width - 24).coerceAtMost(500)
         val half = (footerWidth - 8) / 2
@@ -126,5 +113,50 @@ class EditorHubScreen(
             if (save()) minecraft?.setScreen(previousScreen)
         })
         else super.onClose()
+    }
+}
+
+private class EditorHubCardsList(
+    minecraft: Minecraft,
+    width: Int,
+    height: Int,
+    top: Int,
+    private val rowWidth: Int,
+    columns: Int,
+    cards: List<EditorHubCard>,
+) : ContainerObjectSelectionList<EditorHubCardsList.CardRow>(minecraft, width, height, top, 76) {
+    init {
+        cards.chunked(columns).forEach { addEntry(CardRow(it)) }
+    }
+
+    override fun getRowWidth(): Int = rowWidth
+    override fun getScrollbarPosition(): Int = x + width - 7
+
+    class CardRow(cards: List<EditorHubCard>) : Entry<CardRow>() {
+        private val entries = cards.map { card ->
+            TechButton.builder(Component.literal("${card.glyph}  ").append(card.title)) { card.action() }
+                .subtitle(card.description)
+                .style(TechButtonStyle.CARD)
+                .bounds(0, 0, 100, 68)
+                .build()
+        }
+
+        override fun children(): List<GuiEventListener> = entries
+        override fun narratables(): List<NarratableEntry> = entries
+
+        override fun render(
+            guiGraphics: GuiGraphics, index: Int, top: Int, left: Int, width: Int, height: Int,
+            mouseX: Int, mouseY: Int, hovered: Boolean, partialTick: Float,
+        ) {
+            val gap = 8
+            val cardWidth = ((width - gap * (entries.size - 1)) / entries.size).coerceAtLeast(40)
+            entries.forEachIndexed { cardIndex, button ->
+                button.x = left + cardIndex * (cardWidth + gap)
+                button.y = top + 2
+                button.width = cardWidth
+                button.height = (height - 8).coerceAtLeast(38)
+                button.render(guiGraphics, mouseX, mouseY, partialTick)
+            }
+        }
     }
 }

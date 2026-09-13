@@ -2,7 +2,9 @@ package org.bmp.cph.client.editor
 
 import net.minecraft.Util
 import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.components.AbstractButton
+import net.minecraft.client.gui.components.EditBox
 import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.narration.NarratedElementType
 import net.minecraft.client.gui.narration.NarrationElementOutput
@@ -13,6 +15,29 @@ import kotlin.math.sin
 
 internal fun tr(key: String, vararg values: Any): Component = Component.translatable("cph.editor.$key", *values)
 
+/**
+ * EditBox keeps a horizontal viewport calculated from its construction width. Editor lists must create it
+ * at its final width; while unfocused we render from the beginning without destroying the user's cursor.
+ */
+internal class StableEditBox(
+    font: Font,
+    x: Int,
+    y: Int,
+    width: Int,
+    height: Int,
+    message: Component,
+) : EditBox(font, x, y, width, height, message) {
+    override fun setValue(value: String) {
+        super.setValue(value)
+        if (!isFocused) moveCursorToStart(false)
+    }
+
+    override fun setFocused(focused: Boolean) {
+        super.setFocused(focused)
+        if (!focused) moveCursorToStart(false)
+    }
+}
+
 abstract class EditorScreenBase(
     title: Component,
     previous: Screen,
@@ -21,6 +46,14 @@ abstract class EditorScreenBase(
     protected val accentPurple = 0xFF9B7BFF.toInt()
     protected val panel = 0xD0181C29.toInt()
     protected val panelHover = 0xE0242A3A.toInt()
+
+    override fun tick() {
+        super.tick()
+        val client = minecraft ?: return
+        val scaledWidth = client.window.guiScaledWidth
+        val scaledHeight = client.window.guiScaledHeight
+        if (scaledWidth != width || scaledHeight != height) resize(client, scaledWidth, scaledHeight)
+    }
 
     final override fun renderBackground(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         renderEditorBackground(guiGraphics)

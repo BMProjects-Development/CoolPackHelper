@@ -69,7 +69,7 @@ class DescriptionEntryEditorScreen(
     override fun init() {
         val w = (width - 30).coerceAtMost(650)
         val x = (width - w) / 2
-        localeField = EditBox(font, x, 70, w, 20, tr("description.locale")).also {
+        localeField = StableEditBox(font, x, 70, w, 20, tr("description.locale")).also {
             it.value = originalLocale ?: "en_us"; it.setMaxLength(32); addRenderableWidget(it)
         }
         textField = MultiLineEditBox(font, x, 116, w, (height - 158).coerceAtLeast(42), tr("description.text"), tr("description.text")).also {

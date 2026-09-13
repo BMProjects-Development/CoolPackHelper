@@ -79,7 +79,7 @@ class GeneralEditorScreen(
     }
 
     private fun field(x: Int, y: Int, width: Int, value: String): EditBox =
-        EditBox(font, x, y, width, 20, tr("field")).also {
+        StableEditBox(font, x, y, width, 20, tr("field")).also {
             it.setMaxLength(512)
             it.value = value
             addRenderableWidget(it)

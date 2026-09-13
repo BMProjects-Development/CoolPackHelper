@@ -85,7 +85,7 @@ class MenuTranslationEntryScreen(
     override fun init() {
         val w = (width - 26).coerceAtMost(680)
         val x = (width - w) / 2
-        localeField = EditBox(font, x, 48, w, 20, tr("translation.locale")).also {
+        localeField = StableEditBox(font, x, 48, w, 20, tr("translation.locale")).also {
             it.value = localeValue
             it.setMaxLength(32)
             it.setResponder { value -> localeValue = value }
@@ -148,7 +148,7 @@ private class TranslationFieldsList(
     working: JsonObject,
 ) : ContainerObjectSelectionList<TranslationFieldsList.FieldEntry>(minecraft, width, height, top, 42) {
     init {
-        keys.forEach { key -> addEntry(FieldEntry(key, minecraft.font, working)) }
+        keys.forEach { key -> addEntry(FieldEntry(key, minecraft.font, working, (rowWidth - 14).coerceAtLeast(20))) }
     }
 
     override fun getRowWidth(): Int = rowWidth
@@ -159,8 +159,9 @@ private class TranslationFieldsList(
         private val key: String,
         private val font: Font,
         working: JsonObject,
+        fieldWidth: Int,
     ) : ContainerObjectSelectionList.Entry<FieldEntry>() {
-        private val field = EditBox(font, 0, 0, 100, 20, Component.literal(key)).also { editBox ->
+        private val field = StableEditBox(font, 0, 0, fieldWidth, 20, Component.literal(key)).also { editBox ->
             editBox.value = working.get(key)?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
             editBox.setMaxLength(8192)
             editBox.setResponder { value ->
@@ -192,7 +193,6 @@ private class TranslationFieldsList(
             guiGraphics.drawString(font, key, left + 7, top + 4, 0x90A7BC, false)
             field.x = left + 7
             field.y = top + 15
-            field.width = (width - 14).coerceAtLeast(20)
             field.render(guiGraphics, mouseX, mouseY, partialTick)
         }
     }

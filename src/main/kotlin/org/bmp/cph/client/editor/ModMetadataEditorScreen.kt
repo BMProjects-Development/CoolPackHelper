@@ -74,7 +74,7 @@ private class MetadataImportScreen(
     override fun init() {
         val contentWidth = (width - 30).coerceAtMost(580)
         val left = (width - contentWidth) / 2
-        projectField = EditBox(font, left, 78, contentWidth, 20, tr("metadata.import.project")).also {
+        projectField = StableEditBox(font, left, 78, contentWidth, 20, tr("metadata.import.project")).also {
             it.value = projectValue
             it.setMaxLength(2048)
             it.setResponder { value -> projectValue = value }
@@ -167,15 +167,15 @@ private class MetadataFieldsList(
                 mod.authors = it.split(',').map(String::trim).filter(String::isNotBlank).distinct().take(32)
             },
             Field(tr("metadata.license"), { mod.license.orEmpty() }) { mod.license = it.clean() },
-        ).forEach { addEntry(FieldEntry(it, minecraft.font)) }
+        ).forEach { addEntry(FieldEntry(it, minecraft.font, (rowWidth - 14).coerceAtLeast(20))) }
     }
 
     override fun getRowWidth(): Int = rowWidth
     override fun getScrollbarPosition(): Int = x + width - 7
 
-    class FieldEntry(data: Field, private val font: Font) : Entry<FieldEntry>() {
+    class FieldEntry(data: Field, private val font: Font, fieldWidth: Int) : Entry<FieldEntry>() {
         private val label = data.label
-        private val field = EditBox(font, 0, 0, 100, 20, label).also {
+        private val field = StableEditBox(font, 0, 0, fieldWidth, 20, label).also {
             it.value = data.value()
             it.setMaxLength(4096)
             it.setResponder(data.changed)
@@ -193,7 +193,6 @@ private class MetadataFieldsList(
             guiGraphics.drawString(font, label, left + 7, top + 4, 0x90A7BC, false)
             field.x = left + 7
             field.y = top + 15
-            field.width = (width - 14).coerceAtLeast(20)
             field.render(guiGraphics, mouseX, mouseY, partialTick)
         }
     }
