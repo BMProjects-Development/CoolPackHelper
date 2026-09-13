@@ -392,6 +392,7 @@ private fun englishValidationMessages(): Map<String, String> = mapOf(
     "missing_link_label" to "The website domain will be used as the link label.",
     "empty_config" to "The config file is empty.",
     "parse_error" to "Could not parse the config: {details}",
+    "save_error" to "Could not save the config: {details}",
 )
 
 private fun russianValidationMessages(): Map<String, String> = mapOf(
@@ -415,6 +416,7 @@ private fun russianValidationMessages(): Map<String, String> = mapOf(
     "missing_link_label" to "В качестве подписи будет использован домен сайта.",
     "empty_config" to "Файл конфигурации пуст.",
     "parse_error" to "Не удалось прочитать конфиг: {details}",
+    "save_error" to "Не удалось сохранить конфиг: {details}",
 )
 
 internal fun languageCandidates(languageCode: String, defaultLanguage: String): List<String> = buildList {

@@ -34,6 +34,69 @@ object ConfigManager {
         get() = FMLPaths.GAMEDIR.get().resolve("local").resolve("coolpackhelper").resolve("state.json")
     private val legacyStatePath: Path
         get() = FMLPaths.CONFIGDIR.get().resolve(STATE_FILE)
+    private val authorSettingsPath: Path
+        get() = FMLPaths.GAMEDIR.get().resolve("local").resolve("coolpackhelper").resolve("author-settings.json")
+
+    fun editableCopy(): PackHelperConfig = synchronized(this) {
+        gson.fromJson(gson.toJson(config), PackHelperConfig::class.java)
+    }
+
+    /**
+     * Validates and atomically replaces the distributable configuration. The previous
+     * version remains beside it as coolpackhelper.json.bak so the in-game editor is
+     * recoverable even if Minecraft is interrupted while the author is working.
+     */
+    @Synchronized
+    fun save(edited: PackHelperConfig): List<ConfigIssue> {
+        edited.schemaVersion = CONFIG_SCHEMA_VERSION
+        edited.schemaUrl = edited.schemaUrl ?: SCHEMA_FILE
+        edited.mods = edited.activeModEntries()
+        edited.requiredMods = null
+        edited.showOnlyOnce = null
+
+        val root = gson.toJsonTree(edited)
+        val issues = ConfigValidator.validateStructure(root) + ConfigValidator.validate(edited)
+        if (issues.any { it.severity == IssueSeverity.ERROR }) return issues
+
+        try {
+            val backup = configPath.resolveSibling("${configPath.fileName}.bak")
+            if (Files.exists(configPath)) {
+                Files.copy(configPath, backup, StandardCopyOption.REPLACE_EXISTING)
+            }
+            writeJson(configPath, edited)
+        } catch (exception: Exception) {
+            Cph.LOGGER.error("Could not save CoolPackHelper config from the in-game editor", exception)
+            return issues + ConfigIssue(
+                CONFIG_FILE,
+                "save_error",
+                IssueSeverity.ERROR,
+                mapOf("details" to (exception.message ?: exception.javaClass.simpleName)),
+            )
+        }
+        config = gson.fromJson(gson.toJson(edited), PackHelperConfig::class.java)
+        validationIssues = issues
+        Cph.LOGGER.info("Saved CoolPackHelper config from the in-game editor")
+        return issues
+    }
+
+    fun loadAuthorSettings(): AuthorSettings = try {
+        if (Files.notExists(authorSettingsPath)) AuthorSettings()
+        else Files.newBufferedReader(authorSettingsPath, StandardCharsets.UTF_8).use {
+            gson.fromJson(it, AuthorSettings::class.java)
+        } ?: AuthorSettings()
+    } catch (exception: Exception) {
+        Cph.LOGGER.warn("Could not read local CoolPackHelper author settings", exception)
+        AuthorSettings()
+    }
+
+    @Synchronized
+    fun saveAuthorSettings(settings: AuthorSettings) {
+        try {
+            writeJson(authorSettingsPath, settings)
+        } catch (exception: Exception) {
+            Cph.LOGGER.error("Could not save local CoolPackHelper author settings", exception)
+        }
+    }
 
     @Synchronized
     fun load() {
@@ -171,3 +234,8 @@ object ConfigManager {
         var shownAt: String? = null,
     )
 }
+
+/** Local-only data. This file is deliberately stored outside config/ and is never exported. */
+data class AuthorSettings(
+    var curseForgeApiKey: String? = null,
+)
