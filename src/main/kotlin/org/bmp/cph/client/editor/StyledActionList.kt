@@ -10,6 +10,7 @@ import net.minecraft.client.gui.components.events.GuiEventListener
 import net.minecraft.client.gui.narration.NarratableEntry
 import net.minecraft.client.gui.narration.NarrationElementOutput
 import net.minecraft.network.chat.Component
+import org.bmp.cph.client.ProjectIconCache
 
 data class RowBadge(val text: Component, val color: Int)
 
@@ -34,6 +35,7 @@ class StyledActionList<T>(
     private val subtitleOf: (T) -> String = { "" },
     private val accentOf: (T) -> Int = { 0xFF62D9FF.toInt() },
     private val badgeOf: (T) -> RowBadge? = { null },
+    private val iconOf: (T) -> String? = { null },
     private val actionsOf: (T) -> List<RowAction> = { emptyList() },
     private val onRowClick: ((T) -> Unit)? = null,
     private val rowClickable: (T) -> Boolean = { true },
@@ -92,10 +94,24 @@ class StyledActionList<T>(
             val badge = badgeOf(value)
             val badgeWidth = badge?.let { font.width(it.text) + 12 } ?: 0
             val rowActionWidth = if (rowButton == null) 0 else 12
-            val textWidth = (width - totalActionsWidth - badgeWidth - rowActionWidth - 26).coerceAtLeast(24)
-            guiGraphics.drawString(font, font.plainSubstrByWidth(titleOf(value), textWidth), left + 8, top + 7, 0xE7F3FF, false)
+            val iconUrl = iconOf(value)
+            val iconSize = if (iconUrl.isNullOrBlank()) 0 else (height - 10).coerceIn(16, 30)
+            val textX = left + 8 + if (iconSize == 0) 0 else iconSize + 7
+            if (iconSize > 0) {
+                val iconX = left + 7
+                val iconY = top + (height - 2 - iconSize) / 2
+                guiGraphics.fill(iconX, iconY, iconX + iconSize, iconY + iconSize, 0x80303A49.toInt())
+                ProjectIconCache.texture(iconUrl)?.let { icon ->
+                    guiGraphics.blit(
+                        icon.location, iconX, iconY, iconSize, iconSize, 0f, 0f,
+                        icon.width, icon.height, icon.width, icon.height,
+                    )
+                }
+            }
+            val textWidth = (width - (textX - left) - totalActionsWidth - badgeWidth - rowActionWidth - 18).coerceAtLeast(24)
+            guiGraphics.drawString(font, font.plainSubstrByWidth(titleOf(value), textWidth), textX, top + 7, 0xE7F3FF, false)
             subtitleOf(value).takeIf(String::isNotBlank)?.let {
-                guiGraphics.drawString(font, font.plainSubstrByWidth(it, textWidth), left + 8, top + 20, 0x8094A8, false)
+                guiGraphics.drawString(font, font.plainSubstrByWidth(it, textWidth), textX, top + 20, 0x8094A8, false)
             }
             badge?.let {
                 val badgeX = left + width - totalActionsWidth - badgeWidth - 10

@@ -47,17 +47,24 @@ class ModEditorScreen(
             button.message = categoryText()
         }.bounds(left + half + 8, actionY, half, 20).build()
         addRenderableWidget(category)
+        val third = (contentWidth - 12) / 3
         addRenderableWidget(
             TechButton.builder(tr("mod.descriptions", working.descriptions.orEmpty().size)) {
                 commitFields()
                 minecraft?.setScreen(DescriptionsEditorScreen(this, working))
-            }.bounds(left, actionY + 27, half, 20).build()
+            }.bounds(left, actionY + 27, third, 20).build()
         )
         addRenderableWidget(
             TechButton.builder(tr("mod.links", working.links.orEmpty().size)) {
                 commitFields()
                 minecraft?.setScreen(LinksEditorScreen(this, working))
-            }.bounds(left + half + 8, actionY + 27, half, 20).build()
+            }.bounds(left + third + 6, actionY + 27, third, 20).build()
+        )
+        addRenderableWidget(
+            TechButton.builder(tr("mod.metadata")) {
+                commitFields()
+                minecraft?.setScreen(ModMetadataEditorScreen(this, working))
+            }.bounds(left + (third + 6) * 2, actionY + 27, third, 20).build()
         )
         addRenderableWidget(
             TechButton.builder(tr("save_back")) { saveAndClose() }.style(TechButtonStyle.PRIMARY)

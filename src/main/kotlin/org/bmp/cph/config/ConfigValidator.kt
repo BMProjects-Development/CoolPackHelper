@@ -33,11 +33,13 @@ object ConfigValidator {
         "downloadButton", "chooseSourceButton", "sourcesTitle", "continueButton", "recheckButton", "openModsFolderButton",
         "openConfigFolderButton", "previousButton", "nextButton", "pageIndicator", "configErrorTitle",
         "configErrorDescription", "allResolvedMessage", "allTab", "requiredTab", "recommendedTab", "detailsButton",
-        "detailsTitle", "modIdLabel", "installedVersionLabel", "requiredVersionLabel", "backButton", "emptyTabMessage",
+        "detailsTitle", "modIdLabel", "installedVersionLabel", "requiredVersionLabel", "authorsLabel", "licenseLabel",
+        "projectPageLabel", "backButton", "emptyTabMessage",
         "validationMessages",
     )
     private val modFields = setOf(
-        "enabled", "category", "name", "modId", "versionRange", "filePattern", "description", "descriptions", "links", "downloadUrl",
+        "enabled", "category", "name", "modId", "versionRange", "filePattern", "description", "descriptions",
+        "iconUrl", "projectUrl", "authors", "license", "links", "downloadUrl",
     )
     private val linkFields = setOf(
         "label", "url", "type", "projectId", "versionId", "fileId", "downloadUrl", "fileName", "sizeBytes",
@@ -141,6 +143,19 @@ object ConfigValidator {
             }
 
             val links = mod.availableLinks()
+            mod.iconUrl?.takeIf(String::isNotBlank)?.let { value ->
+                val uri = validHttpUri(value)
+                if (uri?.scheme?.equals("https", ignoreCase = true) != true) {
+                    error("$path.iconUrl", "invalid_icon_url", displayPath = modDisplayName)
+                } else if (uri.host?.lowercase()?.trimEnd('.') !in setOf(
+                        "cdn.modrinth.com", "media.forgecdn.net", "mediafilez.forgecdn.net"
+                    )) {
+                    error("$path.iconUrl", "unsupported_icon_host", displayPath = modDisplayName)
+                }
+            }
+            mod.projectUrl?.takeIf(String::isNotBlank)?.let { value ->
+                if (validHttpUri(value) == null) error("$path.projectUrl", "invalid_url", displayPath = modDisplayName)
+            }
             if (links.isEmpty()) error("$path.links", "missing_links", displayPath = modDisplayName)
             links.forEachIndexed { linkIndex, link ->
                 val linkName = link.label?.takeIf { it.isNotBlank() } ?: "#${linkIndex + 1}"

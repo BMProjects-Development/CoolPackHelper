@@ -35,6 +35,7 @@ class DownloadSourcesScreen(
             subtitleOf = { it.downloadUrl?.takeIf(String::isNotBlank) ?: it.url.orEmpty() },
             accentOf = { 0xFF62D9FF.toInt() },
             badgeOf = { RowBadge(Component.literal(it.resolvedType().name), 0xFF62D9FF.toInt()) },
+            iconOf = { result.mod.iconUrl },
             actionsOf = { link ->
                 listOf(
                     RowAction(

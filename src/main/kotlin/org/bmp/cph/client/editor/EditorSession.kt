@@ -62,5 +62,6 @@ class EditorSession private constructor(val config: PackHelperConfig) {
 
 internal fun RequiredMod.copyForEditor(): RequiredMod = copy(
     descriptions = descriptions?.toMutableMap(),
+    authors = authors?.toMutableList(),
     links = links?.map(DownloadLink::copy)?.toMutableList(),
 )

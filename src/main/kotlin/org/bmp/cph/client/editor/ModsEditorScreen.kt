@@ -63,6 +63,7 @@ class ModsEditorScreen(
                     else -> 0xFFE0B85B.toInt()
                 }
             },
+            iconOf = { it.second.iconUrl },
             actionsOf = { (index, _) ->
                 listOf(
                     RowAction(label = { tr("mods.edit") }, width = 58) {

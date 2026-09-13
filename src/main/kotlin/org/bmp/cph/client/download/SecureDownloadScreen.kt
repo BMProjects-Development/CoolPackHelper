@@ -58,6 +58,7 @@ class SecureDownloadScreen private constructor(
                     else RowBadge(Component.translatable("cph.download.status.failed"), 0xFFFF6B78.toInt())
                 } ?: RowBadge(trustLabel(value), trustColor(value) and 0xFFFFFF)
             },
+            iconOf = { it.mod.iconUrl },
             actionsOf = { value ->
                 val actions = mutableListOf<RowAction>()
                 if (bulk && value.status == DownloadResolutionStatus.READY && value.trust != DownloadTrustLevel.PLATFORM) {

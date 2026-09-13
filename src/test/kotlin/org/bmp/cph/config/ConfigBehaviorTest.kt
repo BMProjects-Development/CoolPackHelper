@@ -1,6 +1,7 @@
 package org.bmp.cph.config
 
 import com.google.gson.JsonParser
+import com.google.gson.Gson
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -79,5 +80,40 @@ class ConfigBehaviorTest {
 
         assertEquals("mods[0].links[0].url", issue.path)
         assertEquals("Example Technology · Website", issue.displayPath)
+    }
+
+    @Test
+    fun `project metadata survives config serialization`() {
+        val mod = RequiredMod(
+            name = "Example",
+            modId = "example",
+            iconUrl = "https://cdn.modrinth.com/data/example/icon.png",
+            projectUrl = "https://modrinth.com/mod/example",
+            authors = listOf("Alice", "Bob"),
+            license = "MIT",
+            links = listOf(DownloadLink(url = "https://modrinth.com/mod/example")),
+        )
+
+        val restored = Gson().fromJson(Gson().toJson(mod), RequiredMod::class.java)
+
+        assertEquals(mod.iconUrl, restored.iconUrl)
+        assertEquals(listOf("Alice", "Bob"), restored.authors)
+        assertEquals("MIT", restored.license)
+    }
+
+    @Test
+    fun `project icon requires HTTPS`() {
+        val config = PackHelperConfig(
+            mods = listOf(
+                RequiredMod(
+                    name = "Example",
+                    modId = "example",
+                    iconUrl = "http://cdn.modrinth.com/icon.png",
+                    links = listOf(DownloadLink(url = "https://modrinth.com/mod/example")),
+                )
+            )
+        )
+
+        assertTrue(ConfigValidator.validate(config).any { it.code == "invalid_icon_url" })
     }
 }

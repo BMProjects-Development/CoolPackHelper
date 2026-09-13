@@ -85,9 +85,21 @@ class MissingModsList(
 
             val categoryLabel = if (category == ModCategory.REQUIRED) text.requiredLabel else text.recommendedLabel
             val categoryWidth = font.width(categoryLabel)
-            val nameWidth = (width - categoryWidth - 22).coerceAtLeast(30)
+            val iconSize = if (result.mod.iconUrl.isNullOrBlank()) 0 else if (compact) 25 else 38
+            val textLeft = left + 7 + if (iconSize == 0) 0 else iconSize + 7
+            if (iconSize > 0) {
+                val iconY = animatedTop + 6
+                guiGraphics.fill(left + 7, iconY, left + 7 + iconSize, iconY + iconSize, 0x80303A49.toInt())
+                ProjectIconCache.texture(result.mod.iconUrl)?.let { icon ->
+                    guiGraphics.blit(
+                        icon.location, left + 7, iconY, iconSize, iconSize, 0f, 0f,
+                        icon.width, icon.height, icon.width, icon.height,
+                    )
+                }
+            }
+            val nameWidth = (width - categoryWidth - 15 - (textLeft - left)).coerceAtLeast(30)
             val name = font.plainSubstrByWidth(result.mod.displayName(), nameWidth)
-            guiGraphics.drawString(font, name, left + 7, animatedTop + 3, 0xFFFFFF, false)
+            guiGraphics.drawString(font, name, textLeft, animatedTop + 3, 0xFFFFFF, false)
             guiGraphics.drawString(font, categoryLabel, left + width - categoryWidth - 7, animatedTop + 3, accent, false)
 
             val status = when (result.status) {
@@ -98,8 +110,8 @@ class MissingModsList(
             }
             guiGraphics.drawString(
                 font,
-                font.plainSubstrByWidth(status, (width - 14).coerceAtLeast(30)),
-                left + 7,
+                font.plainSubstrByWidth(status, (width - (textLeft - left) - 7).coerceAtLeast(30)),
+                textLeft,
                 animatedTop + 15,
                 0xC8C8C8,
                 false,
@@ -107,8 +119,8 @@ class MissingModsList(
 
             if (!compact) {
                 val description = result.mod.localizedDescription(languageCode, text.fallbackLanguage)
-                font.split(Component.literal(description), (width - 14).coerceAtLeast(30)).take(2).forEachIndexed { line, value ->
-                    guiGraphics.drawString(font, value, left + 7, animatedTop + 29 + line * 10, 0xAFAFAF, false)
+                font.split(Component.literal(description), (width - (textLeft - left) - 7).coerceAtLeast(30)).take(2).forEachIndexed { line, value ->
+                    guiGraphics.drawString(font, value, textLeft, animatedTop + 29 + line * 10, 0xAFAFAF, false)
                 }
             }
 

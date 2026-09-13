@@ -5,6 +5,7 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.components.ContainerObjectSelectionList
 import net.minecraft.client.gui.components.EditBox
+import net.minecraft.client.gui.components.toasts.SystemToast
 import net.minecraft.client.gui.components.events.GuiEventListener
 import net.minecraft.client.gui.narration.NarratableEntry
 import net.minecraft.client.gui.screens.Screen
@@ -78,14 +79,21 @@ class LinkEntryEditorScreen(
     private val onChanged: () -> Unit = {},
 ) : EditorScreenBase(tr("link.title"), parent) {
     private val working = (mod.links.orEmpty().getOrNull(index) ?: DownloadLink()).copy()
+    private var metadataLoading = false
 
     override fun init() {
         val w = (width - 30).coerceAtMost(600)
         val x = (width - w) / 2
+        val metadataWidth = (w * 0.38).toInt().coerceAtLeast(100)
+        val typeWidth = w - metadataWidth - 6
         addRenderableWidget(
             TechButton.builder(tr("link.type", working.resolvedType().name)) { cycleType() }
-                .style(TechButtonStyle.SECONDARY).bounds(x, 49, w, 20).build()
+                .style(TechButtonStyle.SECONDARY).bounds(x, 49, typeWidth, 20).build()
         )
+        val metadata = TechButton.builder(tr(if (metadataLoading) "link.metadata.loading" else "link.metadata")) { loadMetadata() }
+            .style(TechButtonStyle.PRIMARY).bounds(x + typeWidth + 6, 49, metadataWidth, 20).build()
+        metadata.active = !metadataLoading && working.resolvedType() in setOf(DownloadSourceType.MODRINTH, DownloadSourceType.CURSEFORGE)
+        addRenderableWidget(metadata)
         val listWidth = (width - 16).coerceAtLeast(120)
         val list = DownloadSourceFieldsList(
             minecraft ?: Minecraft.getInstance(), listWidth, (height - 116).coerceAtLeast(38), 78,
@@ -107,12 +115,46 @@ class LinkEntryEditorScreen(
         rebuildWidgets()
     }
 
+    private fun loadMetadata() {
+        if (metadataLoading) return
+        metadataLoading = true
+        rebuildWidgets()
+        ProjectMetadataService.fetchAsync(working).whenComplete { value, exception ->
+            Minecraft.getInstance().execute {
+                metadataLoading = false
+                if (value != null) {
+                    ProjectMetadataService.apply(value, mod, working)
+                    commitWorking()
+                    onChanged()
+                    SystemToast.add(
+                        Minecraft.getInstance().toasts,
+                        SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
+                        tr("link.metadata.done"),
+                        Component.literal(value.name),
+                    )
+                } else {
+                    SystemToast.add(
+                        Minecraft.getInstance().toasts,
+                        SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
+                        tr("link.metadata.failed"),
+                        Component.literal(exception?.cause?.message ?: exception?.message ?: "Unknown error"),
+                    )
+                }
+                if (Minecraft.getInstance().screen === this) rebuildWidgets()
+            }
+        }
+    }
+
     private fun save() {
+        commitWorking()
+        onChanged()
+        onClose()
+    }
+
+    private fun commitWorking() {
         val mutable = mod.links.orEmpty().toMutableList()
         if (index in mutable.indices) mutable[index] = working else mutable += working
         mod.links = mutable
-        onChanged()
-        onClose()
     }
 }
 

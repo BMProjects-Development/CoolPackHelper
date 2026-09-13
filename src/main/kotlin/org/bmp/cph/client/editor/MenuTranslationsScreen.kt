@@ -132,7 +132,8 @@ class MenuTranslationEntryScreen(
             "downloadButton", "chooseSourceButton", "sourcesTitle", "continueButton", "recheckButton", "openModsFolderButton",
             "openConfigFolderButton", "previousButton", "nextButton", "pageIndicator", "configErrorTitle",
             "configErrorDescription", "allResolvedMessage", "allTab", "requiredTab", "recommendedTab", "detailsButton",
-            "detailsTitle", "modIdLabel", "installedVersionLabel", "requiredVersionLabel", "backButton", "emptyTabMessage",
+            "detailsTitle", "modIdLabel", "installedVersionLabel", "requiredVersionLabel", "authorsLabel", "licenseLabel",
+            "projectPageLabel", "backButton", "emptyTabMessage",
         )
     }
 }

@@ -87,6 +87,9 @@
         "modIdLabel": { "type": "string" },
         "installedVersionLabel": { "type": "string" },
         "requiredVersionLabel": { "type": "string" },
+        "authorsLabel": { "type": "string" },
+        "licenseLabel": { "type": "string" },
+        "projectPageLabel": { "type": "string" },
         "backButton": { "type": "string" },
         "emptyTabMessage": { "type": "string" },
         "validationMessages": {
@@ -133,6 +136,18 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         },
+        "iconUrl": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://(cdn\\.modrinth\\.com|media(?:filez)?\\.forgecdn\\.net)/"
+        },
+        "projectUrl": { "type": "string", "format": "uri", "pattern": "^https?://" },
+        "authors": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "license": { "type": "string" },
         "links": {
           "type": "array",
           "items": { "$ref": "#/$defs/link" }

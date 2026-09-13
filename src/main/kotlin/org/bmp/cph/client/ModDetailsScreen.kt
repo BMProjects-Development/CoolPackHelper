@@ -45,7 +45,8 @@ class ModDetailsScreen(
                 (footerTop - top).coerceAtLeast(44),
                 top,
                 left,
-                detailsLines(contentWidth - 20),
+                detailsLines(contentWidth - if (result.mod.iconUrl.isNullOrBlank()) 20 else 68),
+                result.mod.iconUrl,
             )
         )
 
@@ -93,6 +94,15 @@ class ModDetailsScreen(
         result.mod.versionRange?.takeIf { it.isNotBlank() }?.let {
             add(Component.literal(text.requiredVersionLabel.replace("{value}", it)).visualOrderText)
         }
+        result.mod.authors.orEmpty().filter(String::isNotBlank).takeIf { it.isNotEmpty() }?.let { authors ->
+            font.split(Component.literal(text.authorsLabel.replace("{value}", authors.joinToString(", "))), maxWidth).forEach(::add)
+        }
+        result.mod.license?.takeIf(String::isNotBlank)?.let {
+            font.split(Component.literal(text.licenseLabel.replace("{value}", it)), maxWidth).forEach(::add)
+        }
+        result.mod.projectUrl?.takeIf(String::isNotBlank)?.let {
+            font.split(Component.literal(text.projectPageLabel.replace("{value}", it)), maxWidth).forEach(::add)
+        }
         add(Component.empty().visualOrderText)
         val description = result.mod.localizedDescription(text.languageCode, text.fallbackLanguage)
         font.split(Component.literal(description), maxWidth.coerceAtLeast(40)).forEach {
@@ -121,6 +131,7 @@ class ModDetailsScreen(
         top: Int,
         left: Int,
         private val lines: List<FormattedCharSequence>,
+        private val iconUrl: String?,
     ) : ScrollPanel(minecraft, width, height, top, left) {
         override fun getContentHeight(): Int = (lines.size * 12 + 12).coerceAtLeast(height - 8)
 
@@ -132,8 +143,18 @@ class ModDetailsScreen(
             mouseX: Int,
             mouseY: Int,
         ) {
+            val textLeft = left + if (iconUrl.isNullOrBlank()) 8 else 56
+            if (!iconUrl.isNullOrBlank()) {
+                guiGraphics.fill(left + 8, relativeY + 6, left + 48, relativeY + 46, 0x80303A49.toInt())
+                ProjectIconCache.texture(iconUrl)?.let { icon ->
+                    guiGraphics.blit(
+                        icon.location, left + 8, relativeY + 6, 40, 40, 0f, 0f,
+                        icon.width, icon.height, icon.width, icon.height,
+                    )
+                }
+            }
             lines.forEachIndexed { index, line ->
-                guiGraphics.drawString(Minecraft.getInstance().font, line, left + 8, relativeY + 6 + index * 12, 0xD8D8D8, false)
+                guiGraphics.drawString(Minecraft.getInstance().font, line, textLeft, relativeY + 6 + index * 12, 0xD8D8D8, false)
             }
         }
 
