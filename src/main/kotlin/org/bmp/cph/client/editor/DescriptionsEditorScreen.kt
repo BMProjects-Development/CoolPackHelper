@@ -136,8 +136,24 @@ private class AutoTranslationScreen(
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("translation.provider.details.${provider.id}")))
             .bounds(fieldX + fieldWidth - helpWidth, dialog.top + 45, helpWidth, 20)
             .build().also { addRenderableWidget(it) }
-        sourceLocale = stableField(fieldX, dialog.top + 71, fieldWidth, defaultSource, 32)
-        targetLocale = stableField(fieldX, dialog.top + 97, fieldWidth, defaultTarget, 32)
+        val languageButtonWidth = 24
+        val languageFieldWidth = (fieldWidth - languageButtonWidth - 4).coerceAtLeast(36)
+        sourceLocale = stableField(fieldX, dialog.top + 71, languageFieldWidth, defaultSource, 32)
+        addLanguagePickerButton(
+            fieldX + fieldWidth - languageButtonWidth,
+            dialog.top + 71,
+            languageButtonWidth,
+            "translation.source.choose",
+            sourceLocale,
+        )
+        targetLocale = stableField(fieldX, dialog.top + 97, languageFieldWidth, defaultTarget, 32)
+        addLanguagePickerButton(
+            fieldX + fieldWidth - languageButtonWidth,
+            dialog.top + 97,
+            languageButtonWidth,
+            "translation.target.choose",
+            targetLocale,
+        )
         val initialEndpoint = rememberedEndpoint
             ?: settings.translationEndpoint
             ?: TranslationService.DEFAULT_ENDPOINT
@@ -347,6 +363,23 @@ private class AutoTranslationScreen(
 
     private fun providerName(provider: TranslationProvider): Component =
         tr("translation.provider.${provider.id}")
+
+    private fun addLanguagePickerButton(
+        x: Int,
+        y: Int,
+        buttonWidth: Int,
+        tooltipKey: String,
+        localeField: EditBox,
+    ) {
+        TechButton.builder(Component.literal("…")) {
+            minecraft?.setScreen(MinecraftLanguagePickerScreen(this, localeField.value) { code -> localeField.value = code })
+        }.style(TechButtonStyle.GHOST)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr(tooltipKey)))
+            .bounds(x, y, buttonWidth, 20).build().also {
+                it.active = !loading
+                addRenderableWidget(it)
+            }
+    }
 
     private fun openProviderHelp() {
         val provider = selectedProvider ?: TranslationProvider.LIBRE_TRANSLATE
