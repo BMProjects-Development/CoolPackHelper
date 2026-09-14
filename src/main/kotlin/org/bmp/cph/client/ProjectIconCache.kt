@@ -113,17 +113,29 @@ object ProjectIconCache {
         }
     }
 
-    private fun decodeImage(bytes: ByteArray): NativeImage = try {
-        NativeImage.read(bytes)
-    } catch (nativeFailure: Exception) {
+    private fun decodeImage(bytes: ByteArray): NativeImage {
+        if (isGif(bytes)) return decodeWithImageIo(bytes, null)
+        return try {
+            NativeImage.read(bytes)
+        } catch (nativeFailure: Exception) {
+            decodeWithImageIo(bytes, nativeFailure)
+        }
+    }
+
+    private fun decodeWithImageIo(bytes: ByteArray, nativeFailure: Exception?): NativeImage {
         val buffered = ImageIO.read(ByteArrayInputStream(bytes)) ?: throw nativeFailure
+            ?: IllegalArgumentException("Unsupported project icon format")
         require(buffered.width in 1..MAX_ICON_DIMENSION && buffered.height in 1..MAX_ICON_DIMENSION) {
             "Invalid icon dimensions"
         }
         val png = ByteArrayOutputStream()
         require(ImageIO.write(buffered, "png", png)) { "Could not convert the project icon" }
-        NativeImage.read(png.toByteArray())
+        return NativeImage.read(png.toByteArray())
     }
+
+    private fun isGif(bytes: ByteArray): Boolean = bytes.size >= 6 &&
+        (bytes.copyOfRange(0, 6).contentEquals("GIF87a".toByteArray(Charsets.US_ASCII)) ||
+            bytes.copyOfRange(0, 6).contentEquals("GIF89a".toByteArray(Charsets.US_ASCII)))
 
     private fun rememberFailure(url: String) {
         if (failed.size >= MAX_FAILED_URLS) {

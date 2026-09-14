@@ -265,6 +265,10 @@ object ConfigManager {
 /** Local-only data. This file is deliberately stored outside config/ and is never exported. */
 data class AuthorSettings(
     var curseForgeApiKey: String? = null,
+    var translationProvider: String? = "libretranslate",
     var translationEndpoint: String? = "https://libretranslate.com/translate",
+    var translationApiKeys: MutableMap<String, String>? = null,
+    var translationRememberApiKey: Boolean? = null,
+    // Kept only to migrate settings created before provider support.
     var translationApiKey: String? = null,
 )

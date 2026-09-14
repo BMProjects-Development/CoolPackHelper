@@ -10,6 +10,17 @@ import java.nio.file.Path
 
 class LocalizationResourcesTest {
     @Test
+    fun `language resources do not contain duplicate keys`() {
+        listOf("en_us", "ru_ru").forEach { code ->
+            val source = checkNotNull(javaClass.getResource("/assets/cph/lang/$code.json")).readText(Charsets.UTF_8)
+            val keys = Regex("^\\s*\"([^\"]+)\"\\s*:", RegexOption.MULTILINE)
+                .findAll(source).map { it.groupValues[1] }.toList()
+            val duplicates = keys.groupingBy(String::toString).eachCount().filterValues { it > 1 }.keys
+            assertTrue(duplicates.isEmpty(), "$code contains duplicate translation keys: $duplicates")
+        }
+    }
+
+    @Test
     fun `English and Russian resources have matching keys and placeholders`() {
         val english = language("en_us")
         val russian = language("ru_ru")

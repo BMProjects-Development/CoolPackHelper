@@ -76,7 +76,7 @@ class MenuTranslationEntryScreen(
     private val working: JsonObject = Gson().toJsonTree(
         originalLocale?.let { session.ensureMenu().translations.orEmpty()[it] } ?: MenuText()
     ).asJsonObject,
-) : EditorScreenBase(tr("translation.title"), parent) {
+) : EditorScreenBase(tr("menu_translation.title"), parent) {
     private val gson = Gson()
     private var localeValue = originalLocale ?: "en_us"
     private lateinit var localeField: EditBox
@@ -85,7 +85,7 @@ class MenuTranslationEntryScreen(
         val w = (width - 26).coerceAtMost(680)
         val x = (width - w) / 2
         val localeWidth = (w * .62).toInt().coerceAtLeast(80)
-        localeField = StableEditBox(font, x + w - localeWidth, 42, localeWidth, 18, tr("translation.locale")).also {
+        localeField = StableEditBox(font, x + w - localeWidth, 42, localeWidth, 18, tr("menu_translation.locale")).also {
             it.value = localeValue
             it.setMaxLength(32)
             it.setResponder { value -> localeValue = value }
@@ -109,8 +109,8 @@ class MenuTranslationEntryScreen(
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        drawHeader(guiGraphics, tr("translation.subtitle"))
-        guiGraphics.drawString(font, tr("translation.locale"), xForLabel(localeField), localeField.y + 5, EditorTheme.TEXT_MUTED, false)
+        drawHeader(guiGraphics, tr("menu_translation.subtitle"))
+        guiGraphics.drawString(font, tr("menu_translation.locale"), xForLabel(localeField), localeField.y + 5, EditorTheme.TEXT_MUTED, false)
     }
 
     private fun saveAndClose() {

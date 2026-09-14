@@ -78,26 +78,42 @@ private class AutoTranslationScreen(
     private val mod: RequiredMod,
     private val onChanged: () -> Unit,
 ) : EditorScreenBase(tr("translation.title"), parent) {
+    private lateinit var providerButton: TechButton
     private lateinit var sourceLocale: EditBox
     private lateinit var targetLocale: EditBox
     private lateinit var endpoint: EditBox
     private lateinit var apiKey: EditBox
+    private var selectedProvider: TranslationProvider? = null
+    private var lastRenderedProvider: TranslationProvider? = null
+    private var rememberApiKey: Boolean? = null
+    private val sessionKeys = mutableMapOf<String, String>()
     private var resultField: MultiLineEditBox? = null
     private var translatedText: String? = null
     private var loading = false
+    private var testingConnection = false
     private var errorMessage: String? = null
+    private var previewTop = 0
     private var dialog = EditorRect(0, 0, 0, 0)
 
     override fun usesModalBackground(): Boolean = true
 
     override fun init() {
-        dialog = centeredModal(680, 390, 260)
+        dialog = centeredModal(700, 420, 280)
         val settings = ConfigManager.loadAuthorSettings()
+        val provider = selectedProvider ?: TranslationProvider.fromId(settings.translationProvider)
+        selectedProvider = provider
         val languages = mod.descriptions.orEmpty().keys
         val rememberedSource = if (::sourceLocale.isInitialized) sourceLocale.value else null
         val rememberedTarget = if (::targetLocale.isInitialized) targetLocale.value else null
         val rememberedEndpoint = if (::endpoint.isInitialized) endpoint.value else null
-        val rememberedKey = if (::apiKey.isInitialized) apiKey.value else null
+        val rememberedKey = if (::apiKey.isInitialized && lastRenderedProvider == provider) apiKey.value else null
+        val legacyKey = settings.translationApiKey?.takeIf(String::isNotBlank)
+        val persistedKey = settings.translationApiKeys.orEmpty()[provider.id]
+            ?: legacyKey?.takeIf { provider == TranslationProvider.LIBRE_TRANSLATE }
+        val keyValue = rememberedKey ?: sessionKeys[provider.id] ?: persistedKey.orEmpty()
+        if (rememberApiKey == null) {
+            rememberApiKey = settings.translationRememberApiKey ?: !persistedKey.isNullOrBlank()
+        }
         val defaultSource = rememberedSource
             ?: languages.firstOrNull { it.equals("en_us", true) } ?: languages.firstOrNull().orEmpty()
         val gameLanguage = Minecraft.getInstance().languageManager.selected
@@ -107,25 +123,52 @@ private class AutoTranslationScreen(
         val labelWidth = (dialog.width * .34).toInt().coerceIn(100, 180)
         val fieldX = left + labelWidth
         val fieldWidth = (dialog.right - fieldX - 10).coerceAtLeast(70)
-        sourceLocale = stableField(fieldX, dialog.top + 49, fieldWidth, defaultSource, 32)
-        targetLocale = stableField(fieldX, dialog.top + 77, fieldWidth, defaultTarget, 32)
-        endpoint = stableField(
-            fieldX, dialog.top + 105, fieldWidth,
-            rememberedEndpoint ?: settings.translationEndpoint ?: TranslationService.DEFAULT_ENDPOINT,
-            2048,
-        )
+        providerButton = TechButton.builder(providerName(provider)) { switchProvider() }
+            .style(TechButtonStyle.SECONDARY)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("translation.provider.hint")))
+            .bounds(fieldX, dialog.top + 45, fieldWidth, 20).build().also { addRenderableWidget(it) }
+        sourceLocale = stableField(fieldX, dialog.top + 71, fieldWidth, defaultSource, 32)
+        targetLocale = stableField(fieldX, dialog.top + 97, fieldWidth, defaultTarget, 32)
+        val initialEndpoint = rememberedEndpoint
+            ?: settings.translationEndpoint
+            ?: TranslationService.DEFAULT_ENDPOINT
+        val displayedEndpoint = if (rememberedEndpoint == null) {
+            TranslationService.normalizeEndpoint(initialEndpoint) ?: initialEndpoint
+        } else {
+            initialEndpoint
+        }
+        endpoint = StableEditBox(font, fieldX, dialog.top + 123, fieldWidth, 20, tr("field")).also {
+            it.value = displayedEndpoint
+            it.setMaxLength(2048)
+            if (provider == TranslationProvider.LIBRE_TRANSLATE) addRenderableWidget(it)
+        }
+        val keyY = if (provider == TranslationProvider.LIBRE_TRANSLATE) dialog.top + 149 else dialog.top + 123
         apiKey = stableField(
-            fieldX, dialog.top + 133, fieldWidth,
-            rememberedKey ?: settings.translationApiKey.orEmpty(),
+            fieldX, keyY, fieldWidth,
+            keyValue,
             512,
         ).also { field ->
             field.setFormatter { value, _ -> FormattedCharSequence.forward("•".repeat(value.length), Style.EMPTY) }
+            field.setTooltip(net.minecraft.client.gui.components.Tooltip.create(tr("translation.api_key.hint")))
         }
-        listOf(sourceLocale, targetLocale, endpoint, apiKey).forEach { it.active = !loading }
+        val rememberY = keyY + 26
+        val rememberText = tr(if (rememberApiKey == true) "translation.remember_key.on" else "translation.remember_key.off")
+        TechButton.builder(rememberText) { button ->
+            rememberApiKey = rememberApiKey != true
+            button.message = tr(if (rememberApiKey == true) "translation.remember_key.on" else "translation.remember_key.off")
+        }.style(TechButtonStyle.GHOST)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("translation.remember_key.hint")))
+            .bounds(fieldX, rememberY, fieldWidth, 18).build().also {
+                it.active = !loading
+                addRenderableWidget(it)
+            }
+        listOf(providerButton, sourceLocale, targetLocale, endpoint, apiKey).forEach { it.active = !loading }
+        previewTop = rememberY + 30
 
         translatedText?.let { value ->
             resultField = StableMultiLineEditBox(
-                font, left, dialog.top + 181, dialog.width - 20, (dialog.height - 218).coerceAtLeast(42),
+                font, left, previewTop + 12, dialog.width - 20,
+                (dialog.bottom - previewTop - 43).coerceAtLeast(30),
                 tr("translation.preview"), tr("translation.preview"),
             ).also {
                 it.value = value
@@ -134,15 +177,21 @@ private class AutoTranslationScreen(
                 addRenderableWidget(it)
             }
         }
+        lastRenderedProvider = provider
 
         val back = TechButton.builder(tr("cancel")) { onClose() }.style(TechButtonStyle.GHOST)
             .bounds(0, 0, compactButtonWidth(tr("cancel")), 18).build()
-        val actionText = tr(if (loading) "translation.loading" else "translation.action")
+        val testText = tr(if (testingConnection) "translation.testing" else "translation.test")
+        val test = TechButton.builder(testText) { testConnection() }.style(TechButtonStyle.GHOST)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("translation.test.hint")))
+            .bounds(0, 0, compactButtonWidth(testText, 78), 18).build()
+        test.active = !loading
+        val actionText = tr(if (loading && !testingConnection) "translation.loading" else "translation.action")
         val action = TechButton.builder(actionText) { translate() }.style(TechButtonStyle.SECONDARY)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("translation.privacy")))
             .bounds(0, 0, compactButtonWidth(actionText, 82), 18).build()
         action.active = !loading
-        val actions = mutableListOf(back, action)
+        val actions = mutableListOf(back, test, action)
         if (translatedText != null) {
             actions += TechButton.builder(tr("translation.save")) { saveTranslation() }.style(TechButtonStyle.PRIMARY)
                 .bounds(0, 0, compactButtonWidth(tr("translation.save"), 90), 18).build()
@@ -152,16 +201,22 @@ private class AutoTranslationScreen(
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         drawModalFrame(guiGraphics, dialog, tr("translation.subtitle"))
-        val labels = listOf("translation.source", "translation.target", "translation.endpoint", "translation.api_key")
-        val fields = listOf(sourceLocale, targetLocale, endpoint, apiKey)
-        fields.forEachIndexed { index, field ->
+        val provider = selectedProvider ?: TranslationProvider.LIBRE_TRANSLATE
+        val fields = buildList<Pair<String, net.minecraft.client.gui.components.AbstractWidget>> {
+            add("translation.provider" to providerButton)
+            add("translation.source" to sourceLocale)
+            add("translation.target" to targetLocale)
+            if (provider == TranslationProvider.LIBRE_TRANSLATE) add("translation.endpoint" to endpoint)
+            add("translation.api_key" to apiKey)
+        }
+        fields.forEach { (label, field) ->
             guiGraphics.drawString(
-                font, font.plainSubstrByWidth(tr(labels[index]).string, (field.x - dialog.left - 24).coerceAtLeast(40)),
+                font, font.plainSubstrByWidth(tr(label).string, (field.x - dialog.left - 24).coerceAtLeast(40)),
                 dialog.left + 12, field.y + 6, EditorTheme.TEXT_MUTED, false,
             )
         }
         if (translatedText != null) {
-            guiGraphics.drawString(font, tr("translation.preview"), dialog.left + 11, dialog.top + 169, EditorTheme.TEXT_MUTED, false)
+            guiGraphics.drawString(font, tr("translation.preview"), dialog.left + 11, previewTop, EditorTheme.TEXT_MUTED, false)
         }
         errorMessage?.let { error ->
             font.split(Component.literal(error), dialog.width - 28).take(2).forEachIndexed { index, line ->
@@ -172,24 +227,26 @@ private class AutoTranslationScreen(
 
     private fun translate() {
         if (loading) return
+        val provider = selectedProvider ?: TranslationProvider.LIBRE_TRANSLATE
         val sourceCode = sourceLocale.value.trim().lowercase()
         val sourceText = mod.descriptions.orEmpty().entries
             .firstOrNull { it.key.equals(sourceCode, true) }?.value.orEmpty()
         val targetCode = targetLocale.value.trim().lowercase()
-        val endpointValue = endpoint.value.trim()
+        val endpointValue = if (provider == TranslationProvider.LIBRE_TRANSLATE) {
+            TranslationService.normalizeEndpoint(endpoint.value) ?: endpoint.value.trim()
+        } else {
+            endpoint.value.trim()
+        }
         val keyValue = apiKey.value.trim()
-        ConfigManager.saveAuthorSettings(
-            ConfigManager.loadAuthorSettings().copy(
-                translationEndpoint = endpointValue,
-                translationApiKey = keyValue.takeIf(String::isNotBlank),
-            )
-        )
+        endpoint.value = endpointValue
+        persistSettings(provider, endpointValue, keyValue)
         loading = true
+        testingConnection = false
         translatedText = null
         resultField = null
         errorMessage = null
         rebuildWidgets()
-        TranslationService.translateAsync(endpointValue, keyValue, sourceText, sourceCode, targetCode)
+        TranslationService.translateAsync(provider, endpointValue, keyValue, sourceText, sourceCode, targetCode)
             .whenComplete { result, exception ->
                 Minecraft.getInstance().execute {
                     loading = false
@@ -204,6 +261,79 @@ private class AutoTranslationScreen(
                 }
             }
     }
+
+    private fun testConnection() {
+        if (loading) return
+        val provider = selectedProvider ?: TranslationProvider.LIBRE_TRANSLATE
+        val endpointValue = if (provider == TranslationProvider.LIBRE_TRANSLATE) {
+            TranslationService.normalizeEndpoint(endpoint.value) ?: endpoint.value.trim()
+        } else {
+            endpoint.value.trim()
+        }
+        val keyValue = apiKey.value.trim()
+        endpoint.value = endpointValue
+        persistSettings(provider, endpointValue, keyValue)
+        loading = true
+        testingConnection = true
+        errorMessage = null
+        rebuildWidgets()
+        TranslationService.testConnectionAsync(provider, endpointValue, keyValue)
+            .whenComplete { _, exception ->
+                Minecraft.getInstance().execute {
+                    loading = false
+                    testingConnection = false
+                    if (Minecraft.getInstance().screen !== this) return@execute
+                    if (exception == null) {
+                        errorMessage = null
+                        SystemToast.add(
+                            Minecraft.getInstance().toasts, SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
+                            tr("translation.connection_ok"), providerName(provider),
+                        )
+                    } else {
+                        errorMessage = exception.cause?.message ?: exception.message ?: tr("error.unknown").string
+                    }
+                    rebuildWidgets()
+                }
+            }
+    }
+
+    private fun persistSettings(provider: TranslationProvider, endpointValue: String, keyValue: String) {
+        sessionKeys[provider.id] = keyValue
+        val currentSettings = ConfigManager.loadAuthorSettings()
+        val storedKeys = currentSettings.translationApiKeys.orEmpty().toMutableMap().also { keys ->
+            currentSettings.translationApiKey?.takeIf(String::isNotBlank)?.let {
+                keys.putIfAbsent(TranslationProvider.LIBRE_TRANSLATE.id, it)
+            }
+            if (rememberApiKey == true) {
+                if (keyValue.isBlank()) keys.remove(provider.id) else keys[provider.id] = keyValue
+            } else {
+                keys.clear()
+            }
+        }
+        ConfigManager.saveAuthorSettings(
+            currentSettings.copy(
+                translationProvider = provider.id,
+                translationEndpoint = endpointValue,
+                translationApiKeys = storedKeys.takeIf { it.isNotEmpty() },
+                translationRememberApiKey = rememberApiKey == true,
+                translationApiKey = null,
+            )
+        )
+    }
+
+    private fun switchProvider() {
+        if (loading) return
+        lastRenderedProvider?.let { sessionKeys[it.id] = apiKey.value }
+        val current = selectedProvider ?: TranslationProvider.LIBRE_TRANSLATE
+        selectedProvider = TranslationProvider.entries[(current.ordinal + 1) % TranslationProvider.entries.size]
+        translatedText = null
+        resultField = null
+        errorMessage = null
+        rebuildWidgets()
+    }
+
+    private fun providerName(provider: TranslationProvider): Component =
+        tr("translation.provider.${provider.id}")
 
     private fun saveTranslation() {
         val locale = targetLocale.value.trim().lowercase()
