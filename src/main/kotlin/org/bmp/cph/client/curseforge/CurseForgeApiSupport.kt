@@ -3,7 +3,7 @@ package org.bmp.cph.client.curseforge
 import net.minecraft.network.chat.Component
 
 object CurseForgeApiSupport {
-    const val USER_AGENT = "BMP/CoolPackHelper/1.0.0 (https://github.com/BMPixel/CoolPackHelper)"
+    const val USER_AGENT = "BMP/CoolPackHelper/1.0.0 (https://github.com/BMProjects-Development/CoolPackHelper)"
     const val API_KEY_HELP_URL = "https://support.curseforge.com/support/solutions/articles/9000208346"
 
     fun normalizeKey(value: String?): String = value.orEmpty().trim().let { key ->
