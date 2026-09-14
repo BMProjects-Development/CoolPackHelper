@@ -206,7 +206,10 @@ abstract class EditorScreenBase(
 
     final override fun renderBackground(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         if (usesModalBackground()) {
-            previousScreen.render(guiGraphics, mouseX, mouseY, partialTick)
+            // The parent remains visible behind the modal, but it must not receive
+            // hover coordinates. Otherwise its hidden widgets can render a second
+            // tooltip over different parts of the modal's controls.
+            previousScreen.render(guiGraphics, OFFSCREEN_MOUSE, OFFSCREEN_MOUSE, partialTick)
             guiGraphics.flush()
             renderBlurredBackground(partialTick)
             guiGraphics.fill(0, 0, width, height, animatedAlphaColor(modalScrimColor()))
@@ -290,6 +293,10 @@ abstract class EditorScreenBase(
             addRenderableWidget(button)
             buttonX += button.width + gap
         }
+    }
+
+    private companion object {
+        const val OFFSCREEN_MOUSE = -10_000
     }
 }
 

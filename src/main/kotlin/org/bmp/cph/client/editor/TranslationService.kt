@@ -8,6 +8,7 @@ import org.bmp.cph.client.download.DownloadSecurity
 import org.bmp.cph.config.DownloadSourceType
 import java.net.InetAddress
 import java.net.URI
+import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -15,10 +16,11 @@ import java.nio.charset.StandardCharsets
 import java.time.Duration
 import java.util.concurrent.CompletableFuture
 
-enum class TranslationProvider(val id: String) {
-    LIBRE_TRANSLATE("libretranslate"),
-    DEEPL("deepl"),
-    GOOGLE("google");
+enum class TranslationProvider(val id: String, val usesApiKey: Boolean, val helpUrl: String) {
+    LIBRE_TRANSLATE("libretranslate", true, "https://portal.libretranslate.com/"),
+    DEEPL("deepl", true, "https://developers.deepl.com/docs/getting-started/quickstart"),
+    GOOGLE("google", true, "https://docs.cloud.google.com/translate/docs/setup"),
+    MYMEMORY("mymemory", false, "https://mymemory.translated.net/doc/spec.php");
 
     companion object {
         fun fromId(value: String?): TranslationProvider = entries.firstOrNull { it.id.equals(value, true) }
@@ -31,6 +33,8 @@ object TranslationService {
     private const val DEEPL_FREE_ENDPOINT = "https://api-free.deepl.com/v2/translate"
     private const val DEEPL_PRO_ENDPOINT = "https://api.deepl.com/v2/translate"
     private const val GOOGLE_ENDPOINT = "https://translation.googleapis.com/language/translate/v2"
+    private const val MYMEMORY_ENDPOINT = "https://api.mymemory.translated.net/get"
+    private const val MYMEMORY_CHUNK_BYTES = 500
     private const val MAX_TEXT_LENGTH = 8192
     private const val MAX_RESPONSE_BYTES = 1024 * 1024
     private const val MAX_REDIRECTS = 3
@@ -53,6 +57,9 @@ object TranslationService {
         val source = languageCode(sourceLocale)
         val target = languageCode(targetLocale)
         require(source != target) { tr("translation.error.same_language").string }
+        if (provider == TranslationProvider.MYMEMORY) {
+            return@supplyAsync translateWithMyMemory(text, source, target)
+        }
         val prepared = prepareRequest(provider, endpoint, apiKey, text, source, target)
         var uri = prepared.uri
         var redirects = 0
@@ -123,6 +130,7 @@ object TranslationService {
                     mapOf("X-goog-api-key" to key),
                 )
             }
+            TranslationProvider.MYMEMORY -> ProbeRequest(myMemoryUri("Hello", "en", "ru"))
         }
         var uri = probe.uri
         var redirects = 0
@@ -206,6 +214,7 @@ object TranslationService {
                     mapOf("X-goog-api-key" to key),
                 )
             }
+            TranslationProvider.MYMEMORY -> error("MyMemory requests are prepared per text chunk")
         }
     }
 
@@ -216,6 +225,7 @@ object TranslationService {
             TranslationProvider.DEEPL -> root.array("translations")?.firstOrNull()?.asObject()?.string("text")
             TranslationProvider.GOOGLE -> root.obj("data")?.array("translations")
                 ?.firstOrNull()?.asObject()?.string("translatedText")
+            TranslationProvider.MYMEMORY -> root.obj("responseData")?.string("translatedText")
         }
     }
 
@@ -239,6 +249,89 @@ object TranslationService {
 
     internal fun deepLEndpoint(apiKey: String): String =
         if (apiKey.trim().endsWith(":fx", ignoreCase = true)) DEEPL_FREE_ENDPOINT else DEEPL_PRO_ENDPOINT
+
+    private fun translateWithMyMemory(text: String, source: String, target: String): String =
+        text.split('\n').joinToString("\n") { line ->
+            if (line.isBlank()) line
+            else myMemoryChunks(line).joinToString(" ") { chunk -> translateMyMemoryChunk(chunk, source, target) }
+        }
+
+    private fun translateMyMemoryChunk(text: String, source: String, target: String): String {
+        val uri = myMemoryUri(text, source, target)
+        validateEndpoint(uri)
+        val response = http.send(
+            HttpRequest.newBuilder(uri)
+                .timeout(Duration.ofSeconds(45))
+                .header("Accept", "application/json")
+                .header("User-Agent", "BMP/CoolPackHelper/1.0.0")
+                .GET().build(),
+            HttpResponse.BodyHandlers.ofInputStream(),
+        )
+        val bytes = response.body().use { it.readNBytes(MAX_RESPONSE_BYTES + 1) }
+        require(bytes.size <= MAX_RESPONSE_BYTES) { tr("translation.error.response_too_large").string }
+        val responseBody = String(bytes, StandardCharsets.UTF_8)
+        if (response.statusCode() !in 200..299) {
+            error(tr("translation.error.http", response.statusCode(), errorDetail(responseBody) ?: tr("error.unknown")).string)
+        }
+        val root = runCatching { gson.fromJson(responseBody, JsonObject::class.java) }.getOrNull()
+            ?: error(tr("translation.error.empty_response").string)
+        val apiStatus = root.get("responseStatus")?.takeIf(JsonElement::isJsonPrimitive)?.asInt
+        if (apiStatus != null && apiStatus !in 200..299) {
+            val detail = root.string("responseDetails") ?: tr("error.unknown").string
+            error(tr("translation.error.http", apiStatus, detail).string)
+        }
+        return parseTranslation(TranslationProvider.MYMEMORY, responseBody)
+            ?.trim()?.takeIf(String::isNotBlank)
+            ?: error(tr("translation.error.empty_response").string)
+    }
+
+    private fun myMemoryUri(text: String, source: String, target: String): URI = URI.create(
+        "$MYMEMORY_ENDPOINT?q=${urlEncode(text)}&langpair=${urlEncode("$source|$target")}",
+    )
+
+    internal fun myMemoryChunks(text: String): List<String> {
+        if (text.isBlank()) return emptyList()
+        val chunks = mutableListOf<String>()
+        var current = StringBuilder()
+
+        fun flush() {
+            current.toString().trim().takeIf(String::isNotBlank)?.let(chunks::add)
+            current = StringBuilder()
+        }
+
+        fun appendPart(part: String) {
+            if (current.isEmpty()) current.append(part)
+            else if (utf8Size(current) + 1 + utf8Size(part) <= MYMEMORY_CHUNK_BYTES) current.append(' ').append(part)
+            else {
+                flush()
+                current.append(part)
+            }
+        }
+
+        Regex("\\S+").findAll(text).map { it.value }.forEach { word ->
+            if (utf8Size(word) <= MYMEMORY_CHUNK_BYTES) {
+                appendPart(word)
+            } else {
+                flush()
+                var part = StringBuilder()
+                word.codePoints().forEach { codePoint ->
+                    val character = String(Character.toChars(codePoint))
+                    if (utf8Size(part) + utf8Size(character) > MYMEMORY_CHUNK_BYTES) {
+                        chunks += part.toString()
+                        part = StringBuilder()
+                    }
+                    part.append(character)
+                }
+                if (part.isNotEmpty()) appendPart(part.toString())
+            }
+        }
+        flush()
+        return chunks
+    }
+
+    private fun utf8Size(value: CharSequence): Int = value.toString().toByteArray(StandardCharsets.UTF_8).size
+
+    private fun urlEncode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8)
 
     private fun translationUri(value: String, normalizePath: Boolean): URI? {
         var uri = safeUri(value) ?: return null

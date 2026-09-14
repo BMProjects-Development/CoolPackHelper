@@ -5,12 +5,14 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.components.EditBox
 import net.minecraft.client.gui.components.MultiLineEditBox
 import net.minecraft.client.gui.components.toasts.SystemToast
+import net.minecraft.client.gui.screens.ConfirmLinkScreen
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.Style
 import net.minecraft.util.FormattedCharSequence
 import org.bmp.cph.config.ConfigManager
 import org.bmp.cph.config.RequiredMod
+import java.net.URI
 
 class DescriptionsEditorScreen(
     parent: Screen,
@@ -123,10 +125,17 @@ private class AutoTranslationScreen(
         val labelWidth = (dialog.width * .34).toInt().coerceIn(100, 180)
         val fieldX = left + labelWidth
         val fieldWidth = (dialog.right - fieldX - 10).coerceAtLeast(70)
+        val helpWidth = 24
         providerButton = TechButton.builder(providerName(provider)) { switchProvider() }
             .style(TechButtonStyle.SECONDARY)
             .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("translation.provider.hint")))
-            .bounds(fieldX, dialog.top + 45, fieldWidth, 20).build().also { addRenderableWidget(it) }
+            .bounds(fieldX, dialog.top + 45, (fieldWidth - helpWidth - 4).coerceAtLeast(36), 20)
+            .build().also { addRenderableWidget(it) }
+        TechButton.builder(Component.literal("?")) { openProviderHelp() }
+            .style(TechButtonStyle.GHOST)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("translation.provider.details.${provider.id}")))
+            .bounds(fieldX + fieldWidth - helpWidth, dialog.top + 45, helpWidth, 20)
+            .build().also { addRenderableWidget(it) }
         sourceLocale = stableField(fieldX, dialog.top + 71, fieldWidth, defaultSource, 32)
         targetLocale = stableField(fieldX, dialog.top + 97, fieldWidth, defaultTarget, 32)
         val initialEndpoint = rememberedEndpoint
@@ -143,27 +152,31 @@ private class AutoTranslationScreen(
             if (provider == TranslationProvider.LIBRE_TRANSLATE) addRenderableWidget(it)
         }
         val keyY = if (provider == TranslationProvider.LIBRE_TRANSLATE) dialog.top + 149 else dialog.top + 123
-        apiKey = stableField(
-            fieldX, keyY, fieldWidth,
-            keyValue,
-            512,
+        apiKey = StableEditBox(
+            font,
+            fieldX, keyY, fieldWidth, 20, tr("field"),
         ).also { field ->
+            field.value = keyValue
+            field.setMaxLength(512)
             field.setFormatter { value, _ -> FormattedCharSequence.forward("•".repeat(value.length), Style.EMPTY) }
             field.setTooltip(net.minecraft.client.gui.components.Tooltip.create(tr("translation.api_key.hint")))
+            if (provider.usesApiKey) addRenderableWidget(field)
         }
         val rememberY = keyY + 26
-        val rememberText = tr(if (rememberApiKey == true) "translation.remember_key.on" else "translation.remember_key.off")
-        TechButton.builder(rememberText) { button ->
-            rememberApiKey = rememberApiKey != true
-            button.message = tr(if (rememberApiKey == true) "translation.remember_key.on" else "translation.remember_key.off")
-        }.style(TechButtonStyle.GHOST)
-            .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("translation.remember_key.hint")))
-            .bounds(fieldX, rememberY, fieldWidth, 18).build().also {
-                it.active = !loading
-                addRenderableWidget(it)
-            }
+        if (provider.usesApiKey) {
+            val rememberText = tr(if (rememberApiKey == true) "translation.remember_key.on" else "translation.remember_key.off")
+            TechButton.builder(rememberText) { button ->
+                rememberApiKey = rememberApiKey != true
+                button.message = tr(if (rememberApiKey == true) "translation.remember_key.on" else "translation.remember_key.off")
+            }.style(TechButtonStyle.GHOST)
+                .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("translation.remember_key.hint")))
+                .bounds(fieldX, rememberY, fieldWidth, 18).build().also {
+                    it.active = !loading
+                    addRenderableWidget(it)
+                }
+        }
         listOf(providerButton, sourceLocale, targetLocale, endpoint, apiKey).forEach { it.active = !loading }
-        previewTop = rememberY + 30
+        previewTop = if (provider.usesApiKey) rememberY + 30 else dialog.top + 132
 
         translatedText?.let { value ->
             resultField = StableMultiLineEditBox(
@@ -207,7 +220,7 @@ private class AutoTranslationScreen(
             add("translation.source" to sourceLocale)
             add("translation.target" to targetLocale)
             if (provider == TranslationProvider.LIBRE_TRANSLATE) add("translation.endpoint" to endpoint)
-            add("translation.api_key" to apiKey)
+            if (provider.usesApiKey) add("translation.api_key" to apiKey)
         }
         fields.forEach { (label, field) ->
             guiGraphics.drawString(
@@ -334,6 +347,11 @@ private class AutoTranslationScreen(
 
     private fun providerName(provider: TranslationProvider): Component =
         tr("translation.provider.${provider.id}")
+
+    private fun openProviderHelp() {
+        val provider = selectedProvider ?: TranslationProvider.LIBRE_TRANSLATE
+        ConfirmLinkScreen.confirmLinkNow(this, URI.create(provider.helpUrl), true)
+    }
 
     private fun saveTranslation() {
         val locale = targetLocale.value.trim().lowercase()
