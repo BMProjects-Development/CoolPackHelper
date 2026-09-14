@@ -1,5 +1,6 @@
 package org.bmp.cph.client.editor
 
+import net.minecraft.Util
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.components.AbstractButton
@@ -31,6 +32,11 @@ internal object EditorTheme {
     const val HEADER_HEIGHT = 36
     const val FOOTER_HEIGHT = 28
     const val CONTROL_HEIGHT = 18
+}
+
+data class EditorRect(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+    val width: Int get() = right - left
+    val height: Int get() = bottom - top
 }
 
 internal fun fillRoundedRect(
@@ -115,15 +121,24 @@ internal class StableEditBox(
     }
 
     override fun renderWidget(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+        val clipLeft = x + 3
+        val clipTop = y + 2
+        val clipRight = x + width - 3
+        val clipBottom = y + height - 2
         val border = if (isFocused) EditorTheme.ACCENT else EditorTheme.BORDER
         drawRoundedOutline(graphics, x, y, x + width, y + height, 4, border, 0xFF14161A.toInt())
         val originalX = x
         val originalWidth = width
-        x += 5
-        width = (width - 10).coerceAtLeast(4)
-        super.renderWidget(graphics, mouseX, mouseY, partialTick)
-        x = originalX
-        width = originalWidth
+        graphics.enableScissor(clipLeft, clipTop, clipRight, clipBottom)
+        try {
+            x += 5
+            width = (width - 10).coerceAtLeast(4)
+            super.renderWidget(graphics, mouseX, mouseY, partialTick)
+        } finally {
+            x = originalX
+            width = originalWidth
+            graphics.disableScissor()
+        }
     }
 }
 
@@ -161,8 +176,16 @@ abstract class EditorScreenBase(
         if (scaledWidth != width || scaledHeight != height) resize(client, scaledWidth, scaledHeight)
     }
 
+    protected open fun usesModalBackground(): Boolean = false
+
     final override fun renderBackground(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        renderEditorBackground(guiGraphics)
+        if (usesModalBackground()) {
+            previousScreen.render(guiGraphics, mouseX, mouseY, partialTick)
+            renderBlurredBackground(partialTick)
+            guiGraphics.fill(0, 0, width, height, animatedColor(0x7A080A0D))
+        } else {
+            renderEditorBackground(guiGraphics)
+        }
         renderEditorContent(guiGraphics, mouseX, mouseY, partialTick)
     }
 
@@ -174,6 +197,14 @@ abstract class EditorScreenBase(
         guiGraphics.fill(0, EditorTheme.HEADER_HEIGHT - 1, width, EditorTheme.HEADER_HEIGHT, EditorTheme.BORDER_SOFT)
         guiGraphics.fill(0, height - EditorTheme.FOOTER_HEIGHT, width, height, 0xD7101115.toInt())
         guiGraphics.fill(0, height - EditorTheme.FOOTER_HEIGHT, width, height - EditorTheme.FOOTER_HEIGHT + 1, EditorTheme.BORDER_SOFT)
+        val time = Util.getMillis() / 90L
+        val particleTop = EditorTheme.HEADER_HEIGHT
+        val particleHeight = (height - EditorTheme.HEADER_HEIGHT - EditorTheme.FOOTER_HEIGHT).coerceAtLeast(1)
+        repeat(10) { index ->
+            val particleX = ((index * 137L + time * (index % 3 + 1)) % (width + 40) - 20).toInt()
+            val particleY = particleTop + ((index * 83L + time / (index % 2 + 2)) % particleHeight).toInt()
+            guiGraphics.fill(particleX, particleY, particleX + 1, particleY + 1, 0x163F5662)
+        }
     }
 
     protected fun drawHeader(guiGraphics: GuiGraphics, subtitle: Component? = null) {
@@ -190,22 +221,42 @@ abstract class EditorScreenBase(
         drawRoundedOutline(guiGraphics, left, top, right, bottom, 6, if (hovered) 0xFF454A54.toInt() else EditorTheme.BORDER, if (hovered) panelHover else panel)
     }
 
+    protected fun centeredModal(maxWidth: Int = 650, maxHeight: Int = 340, minimumHeight: Int = 180): EditorRect {
+        val modalWidth = (width - 24).coerceAtMost(maxWidth).coerceAtLeast(220)
+        val modalHeight = (height - 24).coerceAtMost(maxHeight).coerceAtLeast(minimumHeight)
+        val left = (width - modalWidth) / 2
+        val top = (height - modalHeight) / 2 + slideOffset(7)
+        return EditorRect(left, top, left + modalWidth, top + modalHeight)
+    }
+
+    protected fun drawModalFrame(guiGraphics: GuiGraphics, bounds: EditorRect, subtitle: Component? = null) {
+        drawPanel(guiGraphics, bounds.left, bounds.top, bounds.right, bounds.bottom)
+        guiGraphics.drawString(font, font.plainSubstrByWidth(title.string, (bounds.width - 20).coerceAtLeast(40)), bounds.left + 10, bounds.top + 9, EditorTheme.TEXT, false)
+        subtitle?.let {
+            guiGraphics.drawString(font, font.plainSubstrByWidth(it.string, (bounds.width - 20).coerceAtLeast(40)), bounds.left + 10, bounds.top + 21, EditorTheme.TEXT_MUTED, false)
+        }
+    }
+
     protected fun compactButtonWidth(message: Component, minimum: Int = 58, maximum: Int = 150): Int =
         (font.width(message) + 18).coerceIn(minimum, maximum)
 
     protected fun addFooterActions(vararg buttons: TechButton) {
+        addCompactActions(8, width - 10, height - 23, *buttons)
+    }
+
+    protected fun addCompactActions(left: Int, right: Int, y: Int, vararg buttons: TechButton) {
         val gap = 5
-        val available = (width - 16).coerceAtLeast(40)
+        val available = (right - left).coerceAtLeast(40)
         var totalWidth = buttons.sumOf { it.width } + gap * (buttons.size - 1).coerceAtLeast(0)
         if (totalWidth > available && buttons.isNotEmpty()) {
             val compactWidth = ((available - gap * (buttons.size - 1)) / buttons.size).coerceAtLeast(24)
             buttons.forEach { it.width = compactWidth }
             totalWidth = buttons.sumOf { it.width } + gap * (buttons.size - 1).coerceAtLeast(0)
         }
-        var buttonX = (width - 10 - totalWidth).coerceAtLeast(8)
+        var buttonX = (right - totalWidth).coerceAtLeast(left)
         buttons.forEach { button ->
             button.x = buttonX
-            button.y = height - 23
+            button.y = y
             button.height = EditorTheme.CONTROL_HEIGHT
             addRenderableWidget(button)
             buttonX += button.width + gap
@@ -315,7 +366,7 @@ class TechButton private constructor(
         fun createNarration(value: (TechButton) -> Component) = apply { narration = value }
 
         fun build(): TechButton = TechButton(x, y, width, height, message, subtitle, style, narration, action).also {
-            tooltip?.let(it::setTooltip)
+            it.setTooltip(tooltip ?: Tooltip.create(message))
         }
     }
 

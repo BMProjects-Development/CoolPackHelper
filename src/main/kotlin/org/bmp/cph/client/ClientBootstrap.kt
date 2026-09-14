@@ -20,7 +20,6 @@ object ClientBootstrap {
     private var handledThisLaunch = false
 
     fun register() {
-        NeoForge.EVENT_BUS.addListener(::onScreenOpening)
         NeoForge.EVENT_BUS.addListener(::onScreenInitialized)
         ModList.get().getModContainerById(Cph.ID).ifPresent { container ->
             container.registerExtensionPoint(
@@ -33,6 +32,11 @@ object ClientBootstrap {
 
     private fun onScreenInitialized(event: ScreenEvent.Init.Post) {
         val screen = event.screen
+        if (screen is TitleScreen && !handledThisLaunch) {
+            handledThisLaunch = true
+            Minecraft.getInstance().execute { showStartupRequirements(screen) }
+            return
+        }
         if (screen !is ModListScreen) return
         val font = Minecraft.getInstance().font
         val requirementsText = tr("requirements")
@@ -62,16 +66,11 @@ object ClientBootstrap {
         return MissingModsScreen(parent, results, text)
     }
 
-    private fun onScreenOpening(event: ScreenEvent.Opening) {
-        if (handledThisLaunch) return
-        val newScreen = event.newScreen
-        if (newScreen !is TitleScreen) return
-
-        handledThisLaunch = true
+    private fun showStartupRequirements(titleScreen: TitleScreen) {
         val language = Minecraft.getInstance().languageManager.selected
         val text = MenuTextResolver.resolve(ConfigManager.config.menu, language)
         if (ConfigManager.hasErrors()) {
-            event.newScreen = ConfigErrorScreen(newScreen, ConfigManager.validationIssues, text, true)
+            Minecraft.getInstance().setScreen(ConfigErrorScreen(titleScreen, ConfigManager.validationIssues, text, true))
             Cph.LOGGER.warn("Showing CoolPackHelper config error screen")
             return
         }
@@ -79,7 +78,7 @@ object ClientBootstrap {
         val missing = MissingModDetector.findUnsatisfied(ConfigManager.config.activeModEntries())
         if (missing.isEmpty() || !ConfigManager.shouldShowMenu()) return
 
-        event.newScreen = MissingModsScreen(newScreen, missing, text, markPolicyOnClose = true)
+        Minecraft.getInstance().setScreen(MissingModsScreen(titleScreen, missing, text, markPolicyOnClose = true))
         Cph.LOGGER.info("Showing missing mods menu for {} mod(s)", missing.size)
     }
 }

@@ -5,6 +5,8 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.narration.NarrationElementOutput
 import net.minecraft.client.gui.narration.NarratableEntry
+import net.minecraft.client.gui.components.Tooltip
+import net.minecraft.client.gui.screens.ConfirmLinkScreen
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import net.minecraft.util.FormattedCharSequence
@@ -14,6 +16,7 @@ import org.bmp.cph.client.download.SecureDownloadScreen
 import org.bmp.cph.client.editor.EditorScreenBase
 import org.bmp.cph.client.editor.TechButton
 import org.bmp.cph.client.editor.TechButtonStyle
+import java.net.URI
 
 class ModDetailsScreen(
     parent: Screen,
@@ -52,13 +55,22 @@ class ModDetailsScreen(
         val downloadText = Component.literal(downloadLabel())
         val downloadButton = TechButton.builder(downloadText) { openDownload() }
                 .style(TechButtonStyle.PRIMARY)
+                .tooltip(Tooltip.create(Component.literal(result.mod.availableLinks().joinToString("\n") { it.displayLabel() })))
                 .bounds(0, 0, compactButtonWidth(downloadText, 78), 18)
                 .build()
         downloadButton.active = result.mod.availableLinks().isNotEmpty()
         val backText = Component.literal(text.backButton)
         val back = TechButton.builder(backText) { onClose() }.style(TechButtonStyle.GHOST)
             .bounds(0, 0, compactButtonWidth(backText), 18).build()
-        addFooterActions(back, downloadButton)
+        val projectUrl = result.mod.projectUrl?.takeIf(String::isNotBlank)
+        val project = projectUrl?.let { url ->
+            val labelText = text.projectPageLabel.substringBefore("{value}").trim().trimEnd(':').ifBlank { "Project" }
+            val label = Component.literal(labelText)
+            TechButton.builder(label) { openProject(url) }.style(TechButtonStyle.GHOST)
+                .tooltip(Tooltip.create(Component.literal(url)))
+                .bounds(0, 0, compactButtonWidth(label, 72), 18).build()
+        }
+        addFooterActions(*listOfNotNull(back, project, downloadButton).toTypedArray())
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -92,6 +104,12 @@ class ModDetailsScreen(
         result.mod.projectUrl?.takeIf(String::isNotBlank)?.let {
             font.split(Component.literal(text.projectPageLabel.replace("{value}", it)), maxWidth).forEach(::add)
         }
+        result.mod.availableLinks().takeIf(List<*>::isNotEmpty)?.let { links ->
+            links.forEach { link ->
+                val target = link.downloadUrl?.takeIf(String::isNotBlank) ?: link.url.orEmpty()
+                font.split(Component.literal("${link.displayLabel()}: $target"), maxWidth).forEach(::add)
+            }
+        }
         add(Component.empty().visualOrderText)
         val description = result.mod.localizedDescription(text.languageCode, text.fallbackLanguage)
         font.split(Component.literal(description), maxWidth.coerceAtLeast(40)).forEach {
@@ -110,6 +128,13 @@ class ModDetailsScreen(
             minecraft?.setScreen(SecureDownloadScreen.forSource(this, result, links.first()))
         } else if (links.isNotEmpty()) {
             minecraft?.setScreen(DownloadSourcesScreen(this, result, links, text))
+        }
+    }
+
+    private fun openProject(value: String) {
+        val uri = runCatching { URI(value.trim()) }.getOrNull() ?: return
+        if (uri.scheme.equals("https", true) || uri.scheme.equals("http", true)) {
+            ConfirmLinkScreen.confirmLinkNow(this, uri, true)
         }
     }
 

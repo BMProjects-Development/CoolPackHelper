@@ -20,23 +20,29 @@ import org.bmp.cph.config.RequiredMod
 
 class ModMetadataEditorScreen(parent: Screen, private val mod: RequiredMod, private val onChanged: () -> Unit = {}) :
     EditorScreenBase(tr("metadata.title"), parent) {
+    private var dialog = EditorRect(0, 0, 0, 0)
+
+    override fun usesModalBackground(): Boolean = true
+
     override fun init() {
-        val contentWidth = (width - 24).coerceAtMost(650)
-        val left = (width - contentWidth) / 2
-        val listWidth = (width - 16).coerceAtLeast(120)
+        dialog = centeredModal(680, 350, 210)
+        val listWidth = (dialog.width - 12).coerceAtLeast(120)
         val list = MetadataFieldsList(
-            minecraft ?: Minecraft.getInstance(), listWidth, (height - 72).coerceAtLeast(38), 41,
-            (listWidth - 18).coerceIn(100, 650), mod, onChanged,
+            minecraft ?: Minecraft.getInstance(), listWidth, (dialog.height - 70).coerceAtLeast(38), dialog.top + 38,
+            (listWidth - 10).coerceAtLeast(100), mod, onChanged,
         )
-        list.x = 8
+        list.x = dialog.left + 6
         addRenderableWidget(list)
         val back = TechButton.builder(tr("save_back")) { onClose() }.style(TechButtonStyle.GHOST)
             .bounds(0, 0, compactButtonWidth(tr("save_back"), 80), 18).build()
-        addFooterActions(back, importButton(DownloadSourceType.MODRINTH), importButton(DownloadSourceType.CURSEFORGE))
+        addCompactActions(
+            dialog.left + 8, dialog.right - 8, dialog.bottom - 23,
+            back, importButton(DownloadSourceType.MODRINTH), importButton(DownloadSourceType.CURSEFORGE),
+        )
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        drawHeader(guiGraphics, tr("metadata.subtitle"))
+        drawModalFrame(guiGraphics, dialog, tr("metadata.subtitle"))
     }
 
     private fun importButton(type: DownloadSourceType): TechButton {
@@ -62,18 +68,22 @@ private class MetadataImportScreen(
     } else ""
     private var loading = false
     private var errorMessage: String? = null
+    private var dialog = EditorRect(0, 0, 0, 0)
+
+    override fun usesModalBackground(): Boolean = true
 
     override fun init() {
-        val contentWidth = (width - 30).coerceAtMost(580)
-        val left = (width - contentWidth) / 2
-        projectField = StableMultiLineEditBox(font, left, 78, contentWidth, 34, tr("metadata.import.project"), tr("metadata.import.project")).also {
+        dialog = centeredModal(590, 270, 210)
+        val contentWidth = dialog.width - 18
+        val left = dialog.left + 9
+        projectField = StableMultiLineEditBox(font, left, dialog.top + 62, contentWidth, 34, tr("metadata.import.project"), tr("metadata.import.project")).also {
             it.value = projectValue
             it.setCharacterLimit(2048)
             it.setValueListener { value -> projectValue = value.replace("\r", "").replace("\n", "") }
             addRenderableWidget(it)
         }
         if (type == DownloadSourceType.CURSEFORGE) {
-            keyField = StableEditBox(font, left, 132, contentWidth, 20, tr("curseforge.key")).also {
+            keyField = StableEditBox(font, left, dialog.top + 116, contentWidth, 18, tr("curseforge.key")).also {
                 it.value = keyValue
                 it.setMaxLength(512)
                 it.setFormatter { value, _ -> FormattedCharSequence.forward("•".repeat(value.length), Style.EMPTY) }
@@ -87,15 +97,21 @@ private class MetadataImportScreen(
         import.active = !loading
         val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
             .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
-        addFooterActions(back, import)
+        addCompactActions(dialog.left + 8, dialog.right - 8, dialog.bottom - 23, back, import)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        drawHeader(guiGraphics, tr("metadata.import.subtitle.${type.name.lowercase()}"))
+        drawModalFrame(guiGraphics, dialog, tr("metadata.import.subtitle.${type.name.lowercase()}"))
         guiGraphics.drawString(font, tr("metadata.import.project.${type.name.lowercase()}"), projectField.x, projectField.y - 11, 0x90A7BC, false)
         keyField?.let { guiGraphics.drawString(font, tr("curseforge.key"), it.x, it.y - 11, 0x90A7BC, false) }
         errorMessage?.let {
-            guiGraphics.drawCenteredString(font, font.plainSubstrByWidth(it, width - 32), width / 2, height - 43, 0xFFFF7777.toInt())
+            guiGraphics.drawCenteredString(
+                font,
+                font.plainSubstrByWidth(it, (dialog.width - 24).coerceAtLeast(40)),
+                width / 2,
+                dialog.bottom - 40,
+                0xFFFF7777.toInt(),
+            )
         }
     }
 

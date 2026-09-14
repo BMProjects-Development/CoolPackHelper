@@ -21,6 +21,7 @@ class ModsEditorScreen(
     private var selectedIndex: Int? = null
     private var inspectorLeft = 0
     private var twoPane = false
+    private var modsScrollAmount = 0.0
 
     override fun init() {
         val mods = session.config.activeModEntries()
@@ -48,11 +49,13 @@ class ModsEditorScreen(
         clearSearchButton = TechButton.builder(Component.literal("×")) {
             searchField.value = ""
             setFocused(searchField)
-        }.style(TechButtonStyle.GHOST)
+        }.tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("mods.search.clear.hint")))
+            .style(TechButtonStyle.GHOST)
             .bounds(left + listPaneWidth - sortWidth - clearWidth - 4, 42, clearWidth, 18).build()
         clearSearchButton.active = searchText.isNotEmpty()
         addRenderableWidget(clearSearchButton)
         sortButton = TechButton.builder(sortText) { cycleSort() }
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("mods.sort.hint")))
             .style(TechButtonStyle.GHOST).bounds(left + listPaneWidth - sortWidth, 42, sortWidth, 18).build()
         addRenderableWidget(sortButton)
         val listWidth = listPaneWidth
@@ -79,10 +82,17 @@ class ModsEditorScreen(
             iconOf = { it.second.iconUrl },
             actionsOf = { (index, _) ->
                 listOf(
-                    RowAction(label = { tr("mods.duplicate") }, width = 48, style = { TechButtonStyle.GHOST }) {
+                    RowAction(
+                        label = { tr("mods.duplicate") }, width = 48,
+                        style = { TechButtonStyle.GHOST }, tooltip = tr("mods.duplicate.hint"),
+                    ) {
                         duplicate(index)
                     },
-                    RowAction(label = { Component.literal("×") }, width = 25, style = { TechButtonStyle.DANGER }) {
+                    RowAction(
+                        label = { Component.literal("×") }, width = 25,
+                        style = { TechButtonStyle.DANGER }, tooltip = tr("mods.delete.hint"),
+                    ) {
+                        rememberListScroll()
                         val mutable = session.config.activeModEntries().toMutableList()
                         if (index in mutable.indices) mutable.removeAt(index)
                         session.replaceMods(mutable)
@@ -97,6 +107,7 @@ class ModsEditorScreen(
             },
             onRowClick = { (index, _) ->
                 if (twoPane) {
+                    rememberListScroll()
                     selectedIndex = index
                     rebuildWidgets()
                 } else {
@@ -105,6 +116,7 @@ class ModsEditorScreen(
             },
         )
         modsList.x = left
+        modsList.setScrollAmount(modsScrollAmount)
         addRenderableWidget(modsList)
 
         if (twoPane) {
@@ -178,6 +190,7 @@ class ModsEditorScreen(
     }
 
     private fun duplicate(index: Int) {
+        rememberListScroll()
         val mutable = session.config.activeModEntries().toMutableList()
         val original = mutable.getOrNull(index) ?: return
         val copy = original.copy(
@@ -192,6 +205,7 @@ class ModsEditorScreen(
     }
 
     private fun setAllEnabled(enabled: Boolean) {
+        rememberListScroll()
         session.config.activeModEntries().forEach { it.enabled = enabled }
         session.markDirty()
         rebuildWidgets()
@@ -219,6 +233,11 @@ class ModsEditorScreen(
     }
 
     private fun refreshList() {
+        modsScrollAmount = 0.0
         modsList.replaceItems(filteredMods())
+    }
+
+    private fun rememberListScroll() {
+        if (::modsList.isInitialized) modsScrollAmount = modsList.getScrollAmount()
     }
 }

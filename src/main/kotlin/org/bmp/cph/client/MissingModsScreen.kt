@@ -4,6 +4,7 @@ import net.minecraft.Util
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.toasts.SystemToast
+import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import net.neoforged.fml.loading.FMLPaths
@@ -28,8 +29,19 @@ class MissingModsScreen(
     private var compactHeader = false
     private var listTop = 64
     private var listBottom = 100
+    private var expanded = !markPolicyOnClose || Minecraft.getInstance().window.isFullscreen
+    private var modalLeft = 0
+    private var modalTop = 0
+    private var modalRight = 0
+    private var modalBottom = 0
+
+    override fun usesModalBackground(): Boolean = !expanded
 
     override fun init() {
+        if (!expanded) {
+            initCompactWindow()
+            return
+        }
         compactHeader = height < 280
         listTop = if (compactHeader) 72 else 98
         val footerTop = height - 30
@@ -64,6 +76,18 @@ class MissingModsScreen(
         val summary = text.summary
             .replace("{required}", required.toString())
             .replace("{recommended}", recommended.toString())
+        if (!expanded) {
+            drawPanel(guiGraphics, modalLeft, modalTop, modalRight, modalBottom)
+            val textWidth = (modalRight - modalLeft - 20).coerceAtLeast(40)
+            guiGraphics.drawString(font, font.plainSubstrByWidth(text.title, textWidth), modalLeft + 10, modalTop + 9, animatedColor(0xF0F1F3), false)
+            guiGraphics.drawString(font, font.plainSubstrByWidth(summary, textWidth), modalLeft + 10, modalTop + 23, animatedColor(0x9AA2AD), false)
+            guiGraphics.drawString(font, font.plainSubstrByWidth(text.description, textWidth), modalLeft + 10, modalTop + 37, animatedColor(0x7F8996), false)
+            if (filteredResults().isEmpty()) {
+                val message = if (results.isEmpty()) text.allResolvedMessage else text.emptyTabMessage
+                guiGraphics.drawCenteredString(font, message, width / 2, (listTop + listBottom) / 2, animatedColor(0xAFAFAF))
+            }
+            return
+        }
         drawHeader(guiGraphics, Component.literal(summary))
         if (!compactHeader) {
             font.split(Component.literal(text.description), (width - 32).coerceAtLeast(40)).take(2).forEachIndexed { index, line ->
@@ -82,15 +106,52 @@ class MissingModsScreen(
     }
 
     private fun addFooterButtons() {
+        val collapseText = Component.translatable("cph.requirements.compact")
+        val collapse = TechButton.builder(collapseText) {
+            expanded = false
+            rebuildWidgets()
+        }.style(TechButtonStyle.GHOST)
+            .tooltip(Tooltip.create(Component.translatable("cph.requirements.compact.hint")))
+            .bounds(0, 0, compactButtonWidth(collapseText, 70), 18).build()
         val continueButton = button(text.continueButton, ::onClose, TechButtonStyle.GHOST)
         val folderButton = button(text.openModsFolderButton, ::openModsFolder, TechButtonStyle.GHOST)
         val recheckButton = button(text.recheckButton, ::recheck)
-        addFooterActions(continueButton, folderButton, recheckButton, bulkDownloadButton())
+        addFooterActions(collapse, continueButton, folderButton, recheckButton, bulkDownloadButton())
+    }
+
+    private fun initCompactWindow() {
+        val modalWidth = (width - 24).coerceAtMost(470).coerceAtLeast(220)
+        val modalHeight = (height - 24).coerceAtMost(250).coerceAtLeast(174)
+        modalLeft = (width - modalWidth) / 2
+        modalTop = (height - modalHeight) / 2 + slideOffset(8)
+        modalRight = modalLeft + modalWidth
+        modalBottom = modalTop + modalHeight
+        listTop = modalTop + 54
+        listBottom = modalBottom - 31
+        val listWidth = (modalWidth - 12).coerceAtLeast(120)
+        val list = MissingModsList(
+            minecraft ?: Minecraft.getInstance(), listWidth, (listBottom - listTop).coerceAtLeast(40), listTop,
+            (listWidth - 10).coerceAtLeast(100), true, results, text, text.languageCode,
+            ::openDownload, ::openDetails, ::transitionProgress,
+        )
+        list.x = modalLeft + 6
+        addRenderableWidget(list)
+
+        val close = button(text.continueButton, ::onClose, TechButtonStyle.GHOST)
+        val expandText = Component.translatable("cph.requirements.expand")
+        val expand = TechButton.builder(expandText) {
+            expanded = true
+            rebuildWidgets()
+        }.style(TechButtonStyle.SECONDARY)
+            .tooltip(Tooltip.create(Component.translatable("cph.requirements.expand.hint")))
+            .bounds(0, 0, compactButtonWidth(expandText, 72), 18).build()
+        addCompactActions(modalLeft + 8, modalRight - 8, modalBottom - 23, close, expand, bulkDownloadButton())
     }
 
     private fun bulkDownloadButton(): TechButton {
         val label = Component.translatable("cph.download.install_missing", results.size)
         return TechButton.builder(label) { openBulkDownload() }
+            .tooltip(Tooltip.create(Component.translatable("cph.requirements.install.hint")))
             .style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(label, 86), 18).build().also {
                 it.active = results.any { result -> result.mod.availableLinks().isNotEmpty() }
             }
@@ -118,6 +179,7 @@ class MissingModsScreen(
     private fun button(label: String, action: () -> Unit, style: TechButtonStyle = TechButtonStyle.SECONDARY): TechButton {
         val message = Component.literal(label)
         return TechButton.builder(message) { action() }.style(style)
+            .tooltip(Tooltip.create(Component.translatable("cph.requirements.action.hint", label)))
             .bounds(0, 0, compactButtonWidth(message, 62), 18).build()
     }
 

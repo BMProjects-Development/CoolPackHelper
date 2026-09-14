@@ -19,18 +19,21 @@ class LinksEditorScreen(
     private val mod: RequiredMod,
     private val onChanged: () -> Unit = {},
 ) : EditorScreenBase(tr("links.title", mod.displayName()), parent) {
+    private var dialog = EditorRect(0, 0, 0, 0)
+
+    override fun usesModalBackground(): Boolean = true
+
     override fun init() {
         val links = mod.links.orEmpty()
-        val contentWidth = (width - 24).coerceAtMost(650)
-        val left = (width - contentWidth) / 2
-        val listWidth = (width - 16).coerceAtLeast(120)
+        dialog = centeredModal(680, 350, 190)
+        val listWidth = (dialog.width - 12).coerceAtLeast(120)
         val indexedLinks = links.withIndex().map { it.index to it.value }
         val list = StyledActionList(
             minecraft ?: net.minecraft.client.Minecraft.getInstance(),
             listWidth,
-            (height - 72).coerceAtLeast(38),
-            41,
-            (listWidth - 18).coerceIn(100, 650),
+            (dialog.height - 70).coerceAtLeast(38),
+            dialog.top + 38,
+            (listWidth - 10).coerceAtLeast(100),
             36,
             indexedLinks,
             titleOf = { it.second.displayLabel() },
@@ -50,19 +53,20 @@ class LinksEditorScreen(
                 },
             ) },
         )
-        list.x = 8
+        list.x = dialog.left + 6
         addRenderableWidget(list)
         val add = TechButton.builder(tr("links.add")) {
-                mod.links = mod.links.orEmpty() + DownloadLink()
-                minecraft?.setScreen(LinkEntryEditorScreen(this, mod, mod.links.orEmpty().lastIndex, onChanged))
-            }.style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(tr("links.add")), 18).build()
+                minecraft?.setScreen(LinkEntryEditorScreen(this, mod, mod.links.orEmpty().size, onChanged))
+            }.style(TechButtonStyle.PRIMARY)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("links.add.hint")))
+            .bounds(0, 0, compactButtonWidth(tr("links.add")), 18).build()
         val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
             .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
-        addFooterActions(back, add)
+        addCompactActions(dialog.left + 8, dialog.right - 8, dialog.bottom - 23, back, add)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        drawHeader(guiGraphics, tr("links.subtitle"))
+        drawModalFrame(guiGraphics, dialog, tr("links.subtitle"))
         if (mod.links.orEmpty().isEmpty()) guiGraphics.drawCenteredString(font, tr("links.empty"), width / 2, height / 2, 0x91A4B8)
     }
 
@@ -80,41 +84,71 @@ class LinkEntryEditorScreen(
     private val working = (mod.links.orEmpty().getOrNull(index) ?: DownloadLink()).copy()
     private var metadataLoading = false
     private var showAdvanced = false
+    private var dialogLeft = 0
+    private var dialogTop = 0
+    private var dialogRight = 0
+    private var dialogBottom = 0
+
+    override fun usesModalBackground(): Boolean = true
 
     override fun init() {
-        val w = (width - 30).coerceAtMost(600)
-        val x = (width - w) / 2
+        val bounds = centeredModal(620, 330, 180)
+        val w = bounds.width
+        val h = bounds.height
+        val x = bounds.left
+        val y = bounds.top
+        dialogLeft = x
+        dialogTop = y
+        dialogRight = x + w
+        dialogBottom = y + h
         val typeText = tr("link.type", working.resolvedType().name)
         val metadataText = tr(if (metadataLoading) "link.metadata.loading" else "link.metadata")
         val typeWidth = compactButtonWidth(typeText, 120, 240)
         val metadataWidth = compactButtonWidth(metadataText, 92, 180)
         addRenderableWidget(
             TechButton.builder(typeText) { cycleType() }
-                .style(TechButtonStyle.SECONDARY).bounds(x, 42, typeWidth, 18).build()
+                .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("link.type.hint")))
+                .style(TechButtonStyle.SECONDARY).bounds(x + 8, y + 34, typeWidth, 18).build()
         )
         val metadata = TechButton.builder(metadataText) { loadMetadata() }
-            .style(TechButtonStyle.SECONDARY).bounds(x + typeWidth + 5, 42, metadataWidth, 18).build()
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("link.metadata.hint")))
+            .style(TechButtonStyle.SECONDARY).bounds(x + typeWidth + 13, y + 34, metadataWidth, 18).build()
         metadata.active = !metadataLoading && working.resolvedType() in setOf(DownloadSourceType.MODRINTH, DownloadSourceType.CURSEFORGE)
         addRenderableWidget(metadata)
-        val listWidth = (width - 16).coerceAtLeast(120)
+        val listWidth = (w - 12).coerceAtLeast(120)
+        val listTop = y + 58
         val list = DownloadSourceFieldsList(
-            minecraft ?: Minecraft.getInstance(), listWidth, (height - 97).coerceAtLeast(38), 65,
-            (listWidth - 18).coerceIn(100, 600), working, showAdvanced,
+            minecraft ?: Minecraft.getInstance(), listWidth, (dialogBottom - listTop - 31).coerceAtLeast(38), listTop,
+            (listWidth - 10).coerceAtLeast(100), working, showAdvanced,
         )
-        list.x = 8
+        list.x = x + 6
         addRenderableWidget(list)
         val advancedText = tr(if (showAdvanced) "link.advanced.hide" else "link.advanced.show")
         val advanced = TechButton.builder(advancedText) {
                 showAdvanced = !showAdvanced
                 rebuildWidgets()
-            }.style(TechButtonStyle.GHOST).bounds(0, 0, compactButtonWidth(advancedText, 90), 18).build()
+            }.tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("link.advanced.hint")))
+            .style(TechButtonStyle.GHOST).bounds(0, 0, compactButtonWidth(advancedText, 90), 18).build()
+        val cancel = TechButton.builder(tr("cancel")) { onClose() }
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("link.cancel.hint")))
+            .style(TechButtonStyle.GHOST).bounds(0, 0, compactButtonWidth(tr("cancel")), 18).build()
         val save = TechButton.builder(tr("save_back")) { save() }.style(TechButtonStyle.PRIMARY)
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("link.save.hint")))
             .bounds(0, 0, compactButtonWidth(tr("save_back"), 90), 18).build()
-        addFooterActions(advanced, save)
+        addCompactActions(dialogLeft + 8, dialogRight - 8, dialogBottom - 23, advanced, cancel, save)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        drawHeader(guiGraphics, tr("link.subtitle"))
+        drawPanel(guiGraphics, dialogLeft, dialogTop, dialogRight, dialogBottom)
+        guiGraphics.drawString(font, title, dialogLeft + 10, dialogTop + 9, EditorTheme.TEXT, false)
+        guiGraphics.drawString(
+            font,
+            font.plainSubstrByWidth(tr("link.subtitle").string, (dialogRight - dialogLeft - 20).coerceAtLeast(40)),
+            dialogLeft + 10,
+            dialogTop + 21,
+            EditorTheme.TEXT_MUTED,
+            false,
+        )
     }
 
     private fun cycleType() {
@@ -133,7 +167,6 @@ class LinkEntryEditorScreen(
                 metadataLoading = false
                 if (value != null) {
                     ProjectMetadataService.apply(value, mod, working)
-                    commitWorking()
                     onChanged()
                     SystemToast.add(
                         Minecraft.getInstance().toasts,
@@ -205,7 +238,7 @@ private class DownloadSourceFieldsList(
         )
         val basic = when (link.resolvedType()) {
             DownloadSourceType.MODRINTH -> setOf("label", "projectId", "url")
-            DownloadSourceType.CURSEFORGE -> setOf("label", "projectId", "fileId", "url")
+            DownloadSourceType.CURSEFORGE -> setOf("label", "projectId")
             DownloadSourceType.GITHUB_RELEASE -> setOf("label", "url", "downloadUrl", "sha256")
             DownloadSourceType.DIRECT -> setOf("label", "url", "downloadUrl", "sha256")
             DownloadSourceType.PAGE -> setOf("label", "url")
