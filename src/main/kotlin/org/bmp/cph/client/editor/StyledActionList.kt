@@ -49,6 +49,12 @@ class StyledActionList<T>(
 
     override fun getScrollbarPosition(): Int = x + width - 7
 
+    fun replaceItems(items: List<T>, resetScroll: Boolean = true) {
+        clearEntries()
+        items.forEach { addEntry(Entry(it, minecraft.font)) }
+        if (resetScroll) setScrollAmount(0.0)
+    }
+
     inner class Entry(
         private val value: T,
         private val font: Font,
@@ -84,11 +90,7 @@ class StyledActionList<T>(
             partialTick: Float,
         ) {
             val accent = accentOf(value)
-            guiGraphics.fill(left, top, left + width, top + height - 2, if (hovered) 0xE0222D3E.toInt() else 0xC5161D29.toInt())
-            guiGraphics.fill(left, top, left + 2, top + height - 2, accent)
-            guiGraphics.fill(left + 2, top, left + width, top + 1, 0x4A5A708A)
-            guiGraphics.fill(left + width - 1, top + 1, left + width, top + height - 2, 0x334D6077)
-            guiGraphics.fill(left + 2, top + height - 3, left + width, top + height - 2, 0x334D6077)
+            drawEditorRow(guiGraphics, left, top, width, height, hovered, accent)
 
             val totalActionsWidth = actions.sumOf(RowAction::width) + (actions.size - 1).coerceAtLeast(0) * 4
             val badge = badgeOf(value)
@@ -96,11 +98,11 @@ class StyledActionList<T>(
             val rowActionWidth = if (rowButton == null) 0 else 12
             val iconUrl = iconOf(value)
             val iconSize = if (iconUrl.isNullOrBlank()) 0 else (height - 10).coerceIn(16, 30)
-            val textX = left + 8 + if (iconSize == 0) 0 else iconSize + 7
+            val textX = left + 15 + if (iconSize == 0) 0 else iconSize + 7
             if (iconSize > 0) {
-                val iconX = left + 7
+                val iconX = left + 14
                 val iconY = top + (height - 2 - iconSize) / 2
-                guiGraphics.fill(iconX, iconY, iconX + iconSize, iconY + iconSize, 0x80303A49.toInt())
+                fillRoundedRect(guiGraphics, iconX, iconY, iconX + iconSize, iconY + iconSize, 4, 0xFF272A31.toInt())
                 ProjectIconCache.texture(iconUrl)?.let { icon ->
                     guiGraphics.blit(
                         icon.location, iconX, iconY, iconSize, iconSize, 0f, 0f,
@@ -115,7 +117,10 @@ class StyledActionList<T>(
             }
             badge?.let {
                 val badgeX = left + width - totalActionsWidth - badgeWidth - 10
-                guiGraphics.fill(badgeX, top + (height - 15) / 2, badgeX + badgeWidth, top + (height - 15) / 2 + 15, 0x80202A38.toInt())
+                fillRoundedRect(
+                    guiGraphics, badgeX, top + (height - 15) / 2,
+                    badgeX + badgeWidth, top + (height - 15) / 2 + 15, 4, 0xFF292C33.toInt(),
+                )
                 guiGraphics.drawString(font, it.text, badgeX + 6, top + (height - 8) / 2 - 3, it.color, false)
             }
 

@@ -9,6 +9,7 @@ import net.minecraft.client.gui.components.events.GuiEventListener
 import net.minecraft.client.gui.narration.NarratableEntry
 import net.minecraft.network.chat.Component
 import org.bmp.cph.client.editor.InvisibleRowButton
+import org.bmp.cph.client.editor.drawEditorRow
 import org.bmp.cph.config.ConfigIssue
 import org.bmp.cph.config.IssueSeverity
 import org.bmp.cph.config.ResolvedMenuText
@@ -60,15 +61,11 @@ class ConfigIssuesList(
             partialTick: Float,
         ) {
             val accent = if (issue.severity == IssueSeverity.ERROR) 0xFFE46A6A.toInt() else 0xFFE0B85B.toInt()
-            guiGraphics.fill(left, top, left + width, top + height, if (hovered) 0xE02A2635.toInt() else 0xC5181D29.toInt())
-            guiGraphics.fill(left, top, left + 2, top + height, accent)
-            guiGraphics.fill(left + 2, top, left + width, top + 1, 0x555A708A)
-            guiGraphics.fill(left + width - 1, top + 1, left + width, top + height, 0x334D6077)
-            guiGraphics.fill(left + 2, top + height - 1, left + width, top + height, 0x334D6077)
+            drawEditorRow(guiGraphics, left, top, width, height + 2, hovered, accent)
             guiGraphics.drawString(
                 font,
-                font.plainSubstrByWidth(issue.displayPath ?: issue.path, (width - 14).coerceAtLeast(30)),
-                left + 7,
+                font.plainSubstrByWidth(issue.displayPath ?: issue.path, (width - 22).coerceAtLeast(30)),
+                left + 15,
                 top + 4,
                 accent,
                 false,
@@ -77,7 +74,7 @@ class ConfigIssuesList(
                 guiGraphics.drawString(font, Component.literal("›"), left + width - 13, top + 4, accent, false)
             }
             font.split(Component.literal(issue.localized(text)), (width - 14).coerceAtLeast(30)).take(2).forEachIndexed { line, value ->
-                guiGraphics.drawString(font, value, left + 7, top + 16 + line * 10, 0xC8C8C8, false)
+                guiGraphics.drawString(font, value, left + 15, top + 16 + line * 10, 0xC8C8C8, false)
             }
             openButton?.let { button ->
                 button.x = left

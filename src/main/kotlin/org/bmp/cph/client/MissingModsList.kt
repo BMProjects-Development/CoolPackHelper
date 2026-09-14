@@ -12,6 +12,8 @@ import org.bmp.cph.config.ModCategory
 import org.bmp.cph.config.ResolvedMenuText
 import org.bmp.cph.client.editor.TechButton
 import org.bmp.cph.client.editor.TechButtonStyle
+import org.bmp.cph.client.editor.drawEditorRow
+import org.bmp.cph.client.editor.fillRoundedRect
 
 class MissingModsList(
     minecraft: Minecraft,
@@ -80,23 +82,18 @@ class MissingModsList(
             val animatedTop = top + ((1f - animationProgress()) * 10).toInt()
             val category = result.mod.resolvedCategory()
             val accent = if (category == ModCategory.REQUIRED) 0xFFE46A6A.toInt() else 0xFFE0B85B.toInt()
-            val background = if (hovered) 0xE0222D3E.toInt() else 0xC5161D29.toInt()
-            guiGraphics.fill(left, animatedTop, left + width, animatedTop + height, background)
-            guiGraphics.fill(left, animatedTop, left + 2, animatedTop + height, accent)
-            guiGraphics.fill(left + 2, animatedTop, left + width, animatedTop + 1, 0x555A708A)
-            guiGraphics.fill(left + width - 1, animatedTop + 1, left + width, animatedTop + height, 0x334D6077)
-            guiGraphics.fill(left + 2, animatedTop + height - 1, left + width, animatedTop + height, 0x334D6077)
+            drawEditorRow(guiGraphics, left, animatedTop, width, height + 2, hovered, accent)
 
             val categoryLabel = if (category == ModCategory.REQUIRED) text.requiredLabel else text.recommendedLabel
             val categoryWidth = font.width(categoryLabel)
             val iconSize = if (result.mod.iconUrl.isNullOrBlank()) 0 else if (compact) 25 else 38
-            val textLeft = left + 7 + if (iconSize == 0) 0 else iconSize + 7
+            val textLeft = left + 15 + if (iconSize == 0) 0 else iconSize + 7
             if (iconSize > 0) {
                 val iconY = animatedTop + 6
-                guiGraphics.fill(left + 7, iconY, left + 7 + iconSize, iconY + iconSize, 0x80303A49.toInt())
+                fillRoundedRect(guiGraphics, left + 14, iconY, left + 14 + iconSize, iconY + iconSize, 4, 0xFF272A31.toInt())
                 ProjectIconCache.texture(result.mod.iconUrl)?.let { icon ->
                     guiGraphics.blit(
-                        icon.location, left + 7, iconY, iconSize, iconSize, 0f, 0f,
+                        icon.location, left + 14, iconY, iconSize, iconSize, 0f, 0f,
                         icon.width, icon.height, icon.width, icon.height,
                     )
                 }

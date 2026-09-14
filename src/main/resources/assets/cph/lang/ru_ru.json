@@ -115,6 +115,8 @@
   "cph.editor.link.metadata.loading": "Загрузка…",
   "cph.editor.link.metadata.done": "Метаданные проекта импортированы",
   "cph.editor.link.metadata.failed": "Не удалось импортировать метаданные",
+  "cph.editor.link.advanced.show": "Расширенные поля",
+  "cph.editor.link.advanced.hide": "Скрыть расширенные",
   "cph.editor.descriptions.title": "Описания для %s",
   "cph.editor.descriptions.subtitle": "Отдельное описание для каждого языка с резервным переводом",
   "cph.editor.descriptions.add": "Добавить язык",

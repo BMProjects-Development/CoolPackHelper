@@ -75,14 +75,14 @@ private class MetadataImportScreen(
     override fun init() {
         val contentWidth = (width - 30).coerceAtMost(580)
         val left = (width - contentWidth) / 2
-        projectField = MultiLineEditBox(font, left, 78, contentWidth, 34, tr("metadata.import.project"), tr("metadata.import.project")).also {
+        projectField = StableMultiLineEditBox(font, left, 78, contentWidth, 34, tr("metadata.import.project"), tr("metadata.import.project")).also {
             it.value = projectValue
             it.setCharacterLimit(2048)
             it.setValueListener { value -> projectValue = value.replace("\r", "").replace("\n", "") }
             addRenderableWidget(it)
         }
         if (type == DownloadSourceType.CURSEFORGE) {
-            keyField = EditBox(font, left, 132, contentWidth, 20, tr("curseforge.key")).also {
+            keyField = StableEditBox(font, left, 132, contentWidth, 20, tr("curseforge.key")).also {
                 it.value = keyValue
                 it.setMaxLength(512)
                 it.setFormatter { value, _ -> FormattedCharSequence.forward("•".repeat(value.length), Style.EMPTY) }
@@ -184,7 +184,7 @@ private class MetadataFieldsList(
         private val singleLineField = if (!data.wraps) StableEditBox(font, 0, 0, fieldWidth, 20, label).also {
             it.value = data.value(); it.setMaxLength(4096); it.setResponder(data.changed)
         } else null
-        private val wrappedField = if (data.wraps) MultiLineEditBox(font, 0, 0, fieldWidth, 32, label, label).also {
+        private val wrappedField = if (data.wraps) StableMultiLineEditBox(font, 0, 0, fieldWidth, 32, label, label).also {
             it.setCharacterLimit(4096); it.value = data.value(); it.setValueListener(data.changed)
         } else null
 
@@ -195,8 +195,7 @@ private class MetadataFieldsList(
             guiGraphics: GuiGraphics, index: Int, top: Int, left: Int, width: Int, height: Int,
             mouseX: Int, mouseY: Int, hovered: Boolean, partialTick: Float,
         ) {
-            guiGraphics.fill(left, top, left + width, top + height - 2, if (hovered) 0xE0222D3E.toInt() else 0xC5161D29.toInt())
-            guiGraphics.fill(left, top, left + 2, top + height - 2, 0xFF62D9FF.toInt())
+            drawEditorRow(guiGraphics, left, top, width, height, hovered)
             guiGraphics.drawString(font, label, left + 7, top + 4, 0x90A7BC, false)
             singleLineField?.let {
                 it.x = left + 7

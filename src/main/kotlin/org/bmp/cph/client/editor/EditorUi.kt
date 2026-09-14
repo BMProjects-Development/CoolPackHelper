@@ -1,19 +1,87 @@
 package org.bmp.cph.client.editor
 
-import net.minecraft.Util
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.components.AbstractButton
 import net.minecraft.client.gui.components.EditBox
+import net.minecraft.client.gui.components.MultiLineEditBox
 import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.narration.NarratedElementType
 import net.minecraft.client.gui.narration.NarrationElementOutput
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import org.bmp.cph.client.AnimatedScreen
-import kotlin.math.sin
+import kotlin.math.min
+import kotlin.math.sqrt
 
 internal fun tr(key: String, vararg values: Any): Component = Component.translatable("cph.editor.$key", *values)
+
+internal object EditorTheme {
+    const val BACKGROUND_TOP = 0xFF111216.toInt()
+    const val BACKGROUND_BOTTOM = 0xFF0B0C0F.toInt()
+    const val TOP_BAR = 0xF516181D.toInt()
+    const val SURFACE = 0xF0191B20.toInt()
+    const val SURFACE_HOVER = 0xF023262D.toInt()
+    const val BORDER = 0xFF30343C.toInt()
+    const val BORDER_SOFT = 0xB0262930.toInt()
+    const val TEXT = 0xFFE7E9ED.toInt()
+    const val TEXT_MUTED = 0xFF989DA8.toInt()
+    const val ACCENT = 0xFF76AFC8.toInt()
+    const val ACCENT_PURPLE = 0xFFA795C8.toInt()
+}
+
+internal fun fillRoundedRect(
+    graphics: GuiGraphics,
+    left: Int,
+    top: Int,
+    right: Int,
+    bottom: Int,
+    radius: Int,
+    color: Int,
+) {
+    if (right <= left || bottom <= top) return
+    val r = min(radius.coerceAtLeast(0), min((right - left) / 2, (bottom - top) / 2))
+    if (r == 0) {
+        graphics.fill(left, top, right, bottom, color)
+        return
+    }
+    graphics.fill(left + r, top, right - r, bottom, color)
+    graphics.fill(left, top + r, right, bottom - r, color)
+    for (row in 0 until r) {
+        val dy = r - row - 0.5
+        val inset = (r - sqrt((r * r - dy * dy).coerceAtLeast(0.0))).toInt().coerceIn(0, r)
+        graphics.fill(left + inset, top + row, right - inset, top + row + 1, color)
+        graphics.fill(left + inset, bottom - row - 1, right - inset, bottom - row, color)
+    }
+}
+
+internal fun drawRoundedOutline(
+    graphics: GuiGraphics,
+    left: Int,
+    top: Int,
+    right: Int,
+    bottom: Int,
+    radius: Int,
+    color: Int,
+    innerColor: Int,
+) {
+    fillRoundedRect(graphics, left, top, right, bottom, radius, color)
+    fillRoundedRect(graphics, left + 1, top + 1, right - 1, bottom - 1, (radius - 1).coerceAtLeast(0), innerColor)
+}
+
+internal fun drawEditorRow(
+    graphics: GuiGraphics,
+    left: Int,
+    top: Int,
+    width: Int,
+    height: Int,
+    hovered: Boolean,
+    accent: Int? = null,
+) {
+    val background = if (hovered) EditorTheme.SURFACE_HOVER else EditorTheme.SURFACE
+    drawRoundedOutline(graphics, left, top, left + width, top + height - 2, 4, if (hovered) EditorTheme.BORDER else EditorTheme.BORDER_SOFT, background)
+    accent?.let { fillRoundedRect(graphics, left + 6, top + 6, left + 9, top + height - 8, 2, it) }
+}
 
 /**
  * EditBox keeps a horizontal viewport calculated from its construction width. Editor lists must create it
@@ -27,6 +95,11 @@ internal class StableEditBox(
     height: Int,
     message: Component,
 ) : EditBox(font, x, y, width, height, message) {
+    init {
+        isBordered = false
+        setTextShadow(false)
+    }
+
     override fun setValue(value: String) {
         super.setValue(value)
         if (!isFocused) moveCursorToStart(false)
@@ -36,16 +109,45 @@ internal class StableEditBox(
         super.setFocused(focused)
         if (!focused) moveCursorToStart(false)
     }
+
+    override fun renderWidget(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+        val border = if (isFocused) EditorTheme.ACCENT else EditorTheme.BORDER
+        drawRoundedOutline(graphics, x, y, x + width, y + height, 4, border, 0xFF14161A.toInt())
+        val originalX = x
+        val originalWidth = width
+        x += 5
+        width = (width - 10).coerceAtLeast(4)
+        super.renderWidget(graphics, mouseX, mouseY, partialTick)
+        x = originalX
+        width = originalWidth
+    }
+}
+
+internal class StableMultiLineEditBox(
+    font: Font,
+    x: Int,
+    y: Int,
+    width: Int,
+    height: Int,
+    placeholder: Component,
+    message: Component,
+) : MultiLineEditBox(font, x, y, width, height, placeholder, message) {
+    override fun renderBackground(graphics: GuiGraphics) {
+        val border = if (isFocused) EditorTheme.ACCENT else EditorTheme.BORDER
+        drawRoundedOutline(graphics, x, y, x + width, y + height, 4, border, 0xFF14161A.toInt())
+    }
+
+    override fun renderBorder(graphics: GuiGraphics, x: Int, y: Int, width: Int, height: Int) = Unit
 }
 
 abstract class EditorScreenBase(
     title: Component,
     previous: Screen,
 ) : AnimatedScreen(title, previous) {
-    protected val accent = 0xFF62D9FF.toInt()
-    protected val accentPurple = 0xFF9B7BFF.toInt()
-    protected val panel = 0xD0181C29.toInt()
-    protected val panelHover = 0xE0242A3A.toInt()
+    protected val accent = EditorTheme.ACCENT
+    protected val accentPurple = EditorTheme.ACCENT_PURPLE
+    protected val panel = EditorTheme.SURFACE
+    protected val panelHover = EditorTheme.SURFACE_HOVER
 
     override fun tick() {
         super.tick()
@@ -63,36 +165,30 @@ abstract class EditorScreenBase(
     protected open fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) = Unit
 
     protected fun renderEditorBackground(guiGraphics: GuiGraphics) {
-        guiGraphics.fillGradient(0, 0, width, height, 0xFF090D18.toInt(), 0xFF111629.toInt())
-        val time = Util.getMillis() / 1100.0
-        for (x in 0..width step 32) guiGraphics.fill(x, 0, x + 1, height, 0x0A6E91B0)
-        for (y in 0..height step 32) guiGraphics.fill(0, y, width, y + 1, 0x086E91B0)
-        val scanY = ((Util.getMillis() / 18L) % (height + 60) - 30).toInt()
-        guiGraphics.fillGradient(0, scanY - 8, width, scanY + 8, 0x0062D9FF, 0x1262D9FF)
-        val firstX = (width * .18 + sin(time) * 18).toInt()
-        val secondX = (width * .82 + sin(time * .73 + 2.0) * 22).toInt()
-        guiGraphics.fill(firstX - 70, -18, firstX + 70, 1, 0x5962D9FF)
-        guiGraphics.fill(secondX - 90, height - 1, secondX + 90, height, 0x559B7BFF)
-        guiGraphics.fill(0, 0, width, 1, 0x334B7691)
+        guiGraphics.fillGradient(0, 0, width, height, EditorTheme.BACKGROUND_TOP, EditorTheme.BACKGROUND_BOTTOM)
+        guiGraphics.fill(0, 0, width, 44, EditorTheme.TOP_BAR)
+        guiGraphics.fill(0, 43, width, 44, EditorTheme.BORDER)
+        guiGraphics.fill(0, height - 34, width, height, 0xB7101115.toInt())
+        guiGraphics.fill(0, height - 35, width, height - 34, EditorTheme.BORDER_SOFT)
     }
 
     protected fun drawHeader(guiGraphics: GuiGraphics, subtitle: Component? = null) {
         val offset = slideOffset(12)
-        guiGraphics.drawCenteredString(font, title, width / 2, 12 + offset, animatedColor(0xF4FAFF))
+        val left = 14
+        val titleWidth = (width - 86).coerceAtLeast(30)
+        guiGraphics.drawString(font, font.plainSubstrByWidth(title.string, titleWidth), left, 10 + offset, animatedColor(EditorTheme.TEXT), false)
         subtitle?.let {
-            guiGraphics.drawCenteredString(font, it, width / 2, 28 + offset, animatedColor(0x92A5BB))
+            guiGraphics.drawString(font, font.plainSubstrByWidth(it.string, titleWidth), left, 25 + offset, animatedColor(EditorTheme.TEXT_MUTED), false)
         }
-        val lineWidth = (font.width(title) + 34).coerceAtMost(width - 30)
-        guiGraphics.fill(width / 2 - lineWidth / 2, 41 + offset, width / 2 + lineWidth / 2, 42 + offset, animatedColor(0x2D91B1))
-        guiGraphics.fill(width / 2 - 8, 40 + offset, width / 2 + 8, 42 + offset, animatedColor(0x62D9FF))
+        drawRoundedOutline(
+            guiGraphics, width - 58, 11 + offset, width - 14, 31 + offset, 5,
+            animatedColor(EditorTheme.BORDER), animatedColor(EditorTheme.TOP_BAR),
+        )
+        guiGraphics.drawCenteredString(font, "CPH", width - 36, 17 + offset, animatedColor(EditorTheme.TEXT_MUTED))
     }
 
     protected fun drawPanel(guiGraphics: GuiGraphics, left: Int, top: Int, right: Int, bottom: Int, hovered: Boolean = false) {
-        guiGraphics.fill(left, top, right, bottom, if (hovered) panelHover else panel)
-        guiGraphics.fill(left, top, left + 1, bottom, if (hovered) accent else 0xAA405269.toInt())
-        guiGraphics.fill(left, top, right, top + 1, 0x334E637F)
-        guiGraphics.fill(right - 5, top, right, top + 1, if (hovered) accentPurple else 0x6656677A)
-        guiGraphics.fill(left, bottom - 1, left + 5, bottom, if (hovered) accent else 0x6656677A)
+        drawRoundedOutline(guiGraphics, left, top, right, bottom, 6, if (hovered) 0xFF454A54.toInt() else EditorTheme.BORDER, if (hovered) panelHover else panel)
     }
 }
 
@@ -129,41 +225,26 @@ class TechButton private constructor(
         if (kotlin.math.abs(target - hoverProgress) < .01f) hoverProgress = target
 
         val colors = when (style) {
-            TechButtonStyle.PRIMARY -> Triple(0xE1286884.toInt(), 0xF0388DB1.toInt(), 0xFF62D9FF.toInt())
-            TechButtonStyle.DANGER -> Triple(0xB13A2028.toInt(), 0xE65B2B38.toInt(), 0xFFFF6B78.toInt())
-            TechButtonStyle.GHOST -> Triple(0x64151B28, 0xA0253042.toInt(), 0xFF8499AF.toInt())
-            TechButtonStyle.CARD -> Triple(0xD0171D2A.toInt(), 0xED222E42.toInt(), 0xFF62D9FF.toInt())
-            TechButtonStyle.SECONDARY -> Triple(0xB51D2635.toInt(), 0xE02A384B.toInt(), 0xFF9B7BFF.toInt())
+            TechButtonStyle.PRIMARY -> Triple(0xEF35586A.toInt(), 0xFF416D82.toInt(), EditorTheme.ACCENT)
+            TechButtonStyle.DANGER -> Triple(0xE83A252A.toInt(), 0xF44C2C34.toInt(), 0xFFD47782.toInt())
+            TechButtonStyle.GHOST -> Triple(0xC817191E.toInt(), 0xF024272D.toInt(), 0xFF6D737E.toInt())
+            TechButtonStyle.CARD -> Triple(0xF0191B20.toInt(), 0xFF24272E.toInt(), EditorTheme.ACCENT)
+            TechButtonStyle.SECONDARY -> Triple(0xEE24272D.toInt(), 0xFF30343C.toInt(), 0xFF858B96.toInt())
         }
         val background = blend(colors.first, colors.second, hoverProgress)
         val accentColor = if (active) colors.third else 0xFF526070.toInt()
-        guiGraphics.fill(x, y, x + width, y + height, background)
-        val outline = withAlpha(accentColor, if (isHoveredOrFocused) 210 else if (style == TechButtonStyle.DANGER) 145 else 72)
-        guiGraphics.fill(x, y, x + width, y + 1, outline)
-        guiGraphics.fill(x, y + height - 1, x + width, y + height, outline)
-        guiGraphics.fill(x, y + 1, x + 1, y + height - 1, outline)
-        guiGraphics.fill(x + width - 1, y + 1, x + width, y + height - 1, outline)
-        when (style) {
-            TechButtonStyle.CARD -> guiGraphics.fill(x, y, x + 3, y + height, accentColor)
-            TechButtonStyle.PRIMARY -> guiGraphics.fill(x + 1, y + height - 2, x + width - 1, y + height, accentColor)
-            TechButtonStyle.DANGER -> {
-                guiGraphics.fill(x, y, x + width, y + 1, accentColor)
-                guiGraphics.fill(x, y + height - 1, x + width, y + height, accentColor)
-                guiGraphics.fill(x, y, x + 1, y + height, accentColor)
-                guiGraphics.fill(x + width - 1, y, x + width, y + height, accentColor)
-            }
-            else -> Unit
-        }
+        val outline = withAlpha(accentColor, if (isHoveredOrFocused) 150 else if (style == TechButtonStyle.DANGER) 92 else 45)
+        drawRoundedOutline(guiGraphics, x, y, x + width, y + height, if (style == TechButtonStyle.CARD) 6 else 4, outline, background)
 
         val minecraft = net.minecraft.client.Minecraft.getInstance()
         val font = minecraft.font
-        val textColor = if (active) 0xFFF4FAFF.toInt() else 0xFF687484.toInt()
+        val textColor = if (active) EditorTheme.TEXT else 0xFF666B74.toInt()
         if (style == TechButtonStyle.CARD) {
-            val textX = x + 13
+            val textX = x + 12
             guiGraphics.drawString(font, font.plainSubstrByWidth(message.string, width - 26), textX, y + 10, textColor, false)
             subtitle?.let { secondary ->
                 font.split(secondary, (width - 26).coerceAtLeast(20)).take(if (height >= 58) 2 else 1).forEachIndexed { index, line ->
-                    guiGraphics.drawString(font, line, textX, y + 26 + index * 10, if (active) 0xFF91A7BC.toInt() else 0xFF5D6875.toInt(), false)
+                    guiGraphics.drawString(font, line, textX, y + 26 + index * 10, if (active) EditorTheme.TEXT_MUTED else 0xFF5D6169.toInt(), false)
                 }
             }
             if (isHoveredOrFocused && active) guiGraphics.drawString(font, Component.literal("›"), x + width - 16, y + height / 2 - 4, accentColor, false)

@@ -23,7 +23,7 @@ class CurseForgeKeyScreen(
     override fun init() {
         val w = (width - 30).coerceAtMost(560)
         val x = (width - w) / 2
-        keyField = EditBox(font, x, 92, w, 20, tr("curseforge.key")).also {
+        keyField = StableEditBox(font, x, 92, w, 20, tr("curseforge.key")).also {
             it.value = ConfigManager.loadAuthorSettings().curseForgeApiKey.orEmpty()
             it.setMaxLength(512)
             it.setFormatter { value, _ -> FormattedCharSequence.forward("•".repeat(value.length), Style.EMPTY) }

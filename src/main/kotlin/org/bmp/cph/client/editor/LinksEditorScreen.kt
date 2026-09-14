@@ -81,6 +81,7 @@ class LinkEntryEditorScreen(
 ) : EditorScreenBase(tr("link.title"), parent) {
     private val working = (mod.links.orEmpty().getOrNull(index) ?: DownloadLink()).copy()
     private var metadataLoading = false
+    private var showAdvanced = false
 
     override fun init() {
         val w = (width - 30).coerceAtMost(600)
@@ -98,11 +99,22 @@ class LinkEntryEditorScreen(
         val listWidth = (width - 16).coerceAtLeast(120)
         val list = DownloadSourceFieldsList(
             minecraft ?: Minecraft.getInstance(), listWidth, (height - 116).coerceAtLeast(38), 78,
-            (listWidth - 18).coerceIn(100, 600), working,
+            (listWidth - 18).coerceIn(100, 600), working, showAdvanced,
         )
         list.x = 8
         addRenderableWidget(list)
-        addRenderableWidget(TechButton.builder(tr("save_back")) { save() }.style(TechButtonStyle.PRIMARY).bounds(x, height - 27, w, 20).build())
+        val advancedWidth = (w * 0.38).toInt().coerceAtLeast(110)
+        val saveWidth = w - advancedWidth - 6
+        addRenderableWidget(
+            TechButton.builder(tr(if (showAdvanced) "link.advanced.hide" else "link.advanced.show")) {
+                showAdvanced = !showAdvanced
+                rebuildWidgets()
+            }.style(TechButtonStyle.GHOST).bounds(x, height - 27, advancedWidth, 20).build()
+        )
+        addRenderableWidget(
+            TechButton.builder(tr("save_back")) { save() }.style(TechButtonStyle.PRIMARY)
+                .bounds(x + advancedWidth + 6, height - 27, saveWidth, 20).build()
+        )
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -170,8 +182,10 @@ private class DownloadSourceFieldsList(
     top: Int,
     private val rowWidth: Int,
     link: DownloadLink,
+    advanced: Boolean,
 ) : ContainerObjectSelectionList<DownloadSourceFieldsList.FieldEntry>(minecraft, width, height, top, 54) {
     data class Field(
+        val key: String,
         val label: Component,
         val value: () -> String,
         val maxLength: Int = 2048,
@@ -181,19 +195,28 @@ private class DownloadSourceFieldsList(
 
     init {
         val fields = listOf(
-            Field(tr("link.label"), { link.label.orEmpty() }, 256) { link.label = it.clean() },
-            Field(tr("link.url"), { link.url.orEmpty() }, wraps = true) { link.url = it.singleLine().clean() },
-            Field(tr("link.project_id"), { link.projectId.orEmpty() }, 256) { link.projectId = it.clean() },
-            Field(tr("link.version_id"), { link.versionId.orEmpty() }, 256) { link.versionId = it.clean() },
-            Field(tr("link.file_id"), { link.fileId.orEmpty() }, 256) { link.fileId = it.clean() },
-            Field(tr("link.download_url"), { link.downloadUrl.orEmpty() }, wraps = true) { link.downloadUrl = it.singleLine().clean() },
-            Field(tr("link.file_name"), { link.fileName.orEmpty() }, 256) { link.fileName = it.clean() },
-            Field(tr("link.size"), { link.sizeBytes?.toString().orEmpty() }, 24) { link.sizeBytes = it.trim().toLongOrNull() },
-            Field(tr("link.sha256"), { link.sha256.orEmpty() }, 64) { link.sha256 = it.clean() },
-            Field(tr("link.sha512"), { link.sha512.orEmpty() }, 128) { link.sha512 = it.clean() },
-            Field(tr("link.sha1"), { link.sha1.orEmpty() }, 40) { link.sha1 = it.clean() },
+            Field("label", tr("link.label"), { link.label.orEmpty() }, 256) { link.label = it.clean() },
+            Field("url", tr("link.url"), { link.url.orEmpty() }, wraps = true) { link.url = it.singleLine().clean() },
+            Field("projectId", tr("link.project_id"), { link.projectId.orEmpty() }, 256) { link.projectId = it.clean() },
+            Field("versionId", tr("link.version_id"), { link.versionId.orEmpty() }, 256) { link.versionId = it.clean() },
+            Field("fileId", tr("link.file_id"), { link.fileId.orEmpty() }, 256) { link.fileId = it.clean() },
+            Field("downloadUrl", tr("link.download_url"), { link.downloadUrl.orEmpty() }, wraps = true) { link.downloadUrl = it.singleLine().clean() },
+            Field("fileName", tr("link.file_name"), { link.fileName.orEmpty() }, 256) { link.fileName = it.clean() },
+            Field("sizeBytes", tr("link.size"), { link.sizeBytes?.toString().orEmpty() }, 24) { link.sizeBytes = it.trim().toLongOrNull() },
+            Field("sha256", tr("link.sha256"), { link.sha256.orEmpty() }, 64) { link.sha256 = it.clean() },
+            Field("sha512", tr("link.sha512"), { link.sha512.orEmpty() }, 128) { link.sha512 = it.clean() },
+            Field("sha1", tr("link.sha1"), { link.sha1.orEmpty() }, 40) { link.sha1 = it.clean() },
         )
-        fields.forEach { addEntry(FieldEntry(it, minecraft.font, (rowWidth - 14).coerceAtLeast(20))) }
+        val basic = when (link.resolvedType()) {
+            DownloadSourceType.MODRINTH -> setOf("label", "projectId", "url")
+            DownloadSourceType.CURSEFORGE -> setOf("label", "projectId", "fileId", "url")
+            DownloadSourceType.GITHUB_RELEASE -> setOf("label", "url", "downloadUrl", "sha256")
+            DownloadSourceType.DIRECT -> setOf("label", "url", "downloadUrl", "sha256")
+            DownloadSourceType.PAGE -> setOf("label", "url")
+        }
+        fields.filter { advanced || it.key in basic }.forEach {
+            addEntry(FieldEntry(it, minecraft.font, (rowWidth - 14).coerceAtLeast(20)))
+        }
     }
 
     override fun getRowWidth(): Int = rowWidth
@@ -204,7 +227,7 @@ private class DownloadSourceFieldsList(
         private val singleLineField = if (!fieldData.wraps) StableEditBox(font, 0, 0, fieldWidth, 20, label).also {
             it.value = fieldData.value(); it.setMaxLength(fieldData.maxLength); it.setResponder(fieldData.changed)
         } else null
-        private val wrappedField = if (fieldData.wraps) MultiLineEditBox(font, 0, 0, fieldWidth, 32, label, label).also {
+        private val wrappedField = if (fieldData.wraps) StableMultiLineEditBox(font, 0, 0, fieldWidth, 32, label, label).also {
             it.setCharacterLimit(fieldData.maxLength); it.value = fieldData.value(); it.setValueListener(fieldData.changed)
         } else null
 
@@ -215,8 +238,7 @@ private class DownloadSourceFieldsList(
             guiGraphics: GuiGraphics, index: Int, top: Int, left: Int, width: Int, height: Int,
             mouseX: Int, mouseY: Int, hovered: Boolean, partialTick: Float,
         ) {
-            guiGraphics.fill(left, top, left + width, top + height - 2, if (hovered) 0xE0222D3E.toInt() else 0xC5161D29.toInt())
-            guiGraphics.fill(left, top, left + 2, top + height - 2, 0xFF9B7BFF.toInt())
+            drawEditorRow(guiGraphics, left, top, width, height, hovered)
             guiGraphics.drawString(font, label, left + 7, top + 4, 0x90A7BC, false)
             singleLineField?.let {
                 it.x = left + 7

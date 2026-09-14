@@ -72,7 +72,7 @@ class DescriptionEntryEditorScreen(
         localeField = StableEditBox(font, x, 70, w, 20, tr("description.locale")).also {
             it.value = originalLocale ?: "en_us"; it.setMaxLength(32); addRenderableWidget(it)
         }
-        textField = MultiLineEditBox(font, x, 116, w, (height - 158).coerceAtLeast(42), tr("description.text"), tr("description.text")).also {
+        textField = StableMultiLineEditBox(font, x, 116, w, (height - 158).coerceAtLeast(42), tr("description.text"), tr("description.text")).also {
             it.value = originalLocale?.let { code -> mod.descriptions.orEmpty()[code] }.orEmpty()
             it.setCharacterLimit(8192)
             addRenderableWidget(it)

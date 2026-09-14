@@ -160,10 +160,7 @@ private class ModEditorContentList(
 
     companion object {
         private fun rowBackground(guiGraphics: GuiGraphics, top: Int, left: Int, width: Int, height: Int, hovered: Boolean) {
-            guiGraphics.fill(left, top, left + width, top + height - 2, if (hovered) 0xE0222D3E.toInt() else 0xC5161D29.toInt())
-            guiGraphics.fill(left, top, left + 2, top + height - 2, 0xFF62D9FF.toInt())
-            guiGraphics.fill(left + 2, top, left + width, top + 1, 0x4A5A708A)
-            guiGraphics.fill(left + 2, top + height - 3, left + width, top + height - 2, 0x334D6077)
+            drawEditorRow(guiGraphics, left, top, width, height, hovered)
         }
     }
 }

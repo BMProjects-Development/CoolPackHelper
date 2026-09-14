@@ -13,47 +13,50 @@ class ModsEditorScreen(
     private enum class SortMode { CONFIGURED, NAME, CATEGORY }
 
     private var searchText = ""
-    private var appliedSearch = ""
     private var sortMode = SortMode.CONFIGURED
     private lateinit var searchField: EditBox
+    private lateinit var clearSearchButton: TechButton
+    private lateinit var sortButton: TechButton
+    private lateinit var modsList: StyledActionList<Pair<Int, RequiredMod>>
 
     override fun init() {
         val mods = session.config.activeModEntries()
         val contentWidth = (width - 24).coerceAtMost(720)
         val left = (width - contentWidth) / 2
         val sortWidth = (contentWidth / 3).coerceIn(100, 180)
-        searchField = EditBox(font, left, 49, contentWidth - sortWidth - 6, 20, tr("mods.search")).also {
+        val clearWidth = 24
+        searchField = StableEditBox(font, left, 49, contentWidth - sortWidth - clearWidth - 10, 20, tr("mods.search")).also {
             it.value = searchText
             it.setMaxLength(256)
-            it.setResponder { value -> searchText = value }
+            it.setResponder { value ->
+                searchText = value
+                if (::modsList.isInitialized) refreshList()
+                if (::clearSearchButton.isInitialized) clearSearchButton.active = value.isNotEmpty()
+            }
             if (searchText.isNotEmpty()) it.setCursorPosition(searchText.length)
             addRenderableWidget(it)
         }
-        addRenderableWidget(
-            TechButton.builder(tr("mods.sort.${sortMode.name.lowercase()}")) { cycleSort() }
-                .style(TechButtonStyle.GHOST).bounds(left + contentWidth - sortWidth, 49, sortWidth, 20).build()
-        )
+        clearSearchButton = TechButton.builder(Component.literal("×")) {
+            searchField.value = ""
+            setFocused(searchField)
+        }.style(TechButtonStyle.GHOST)
+            .bounds(left + contentWidth - sortWidth - clearWidth - 6, 49, clearWidth, 20).build()
+        clearSearchButton.active = searchText.isNotEmpty()
+        addRenderableWidget(clearSearchButton)
+        sortButton = TechButton.builder(tr("mods.sort.${sortMode.name.lowercase()}")) { cycleSort() }
+            .style(TechButtonStyle.GHOST).bounds(left + contentWidth - sortWidth, 49, sortWidth, 20).build()
+        addRenderableWidget(sortButton)
         val listWidth = (width - 16).coerceAtLeast(120)
         val listTop = 76
         val listBottom = height - 86
-        val query = appliedSearch.trim().lowercase()
-        val indexedMods = mods.withIndex().map { it.index to it.value }
-            .filter { (_, mod) -> query.isEmpty() || listOf(mod.name, mod.modId, mod.filePattern).any { it?.lowercase()?.contains(query) == true } }
-            .let { values ->
-                when (sortMode) {
-                    SortMode.CONFIGURED -> values
-                    SortMode.NAME -> values.sortedBy { it.second.displayName().lowercase() }
-                    SortMode.CATEGORY -> values.sortedWith(compareBy({ it.second.resolvedCategory() }, { it.second.displayName().lowercase() }))
-                }
-            }
-        val list = StyledActionList(
+        modsList = StyledActionList(
             minecraft ?: net.minecraft.client.Minecraft.getInstance(),
             listWidth,
             (listBottom - listTop).coerceAtLeast(38),
             listTop,
             (listWidth - 18).coerceIn(100, 720),
             42,
-            indexedMods,
+            filteredMods(),
             titleOf = { it.second.displayName() },
             subtitleOf = { it.second.modId?.takeIf(String::isNotBlank) ?: it.second.filePattern.orEmpty() },
             accentOf = { (_, mod) ->
@@ -81,8 +84,8 @@ class ModsEditorScreen(
                 )
             },
         )
-        list.x = 8
-        addRenderableWidget(list)
+        modsList.x = 8
+        addRenderableWidget(modsList)
 
         val footerWidth = (width - 24).coerceAtMost(720)
         val footerX = (width - footerWidth) / 2
@@ -116,22 +119,14 @@ class ModsEditorScreen(
         if (session.config.activeModEntries().isEmpty()) guiGraphics.drawCenteredString(font, tr("mods.empty"), width / 2, height / 2, 0x91A4B8)
     }
 
-    override fun tick() {
-        super.tick()
-        if (searchText != appliedSearch) {
-            appliedSearch = searchText
-            rebuildWidgets()
-            searchField.isFocused = true
-        }
-    }
-
     override fun onClose() {
         super.onClose()
     }
 
     private fun cycleSort() {
         sortMode = SortMode.entries[(sortMode.ordinal + 1) % SortMode.entries.size]
-        rebuildWidgets()
+        sortButton.message = tr("mods.sort.${sortMode.name.lowercase()}")
+        refreshList()
     }
 
     private fun duplicate(index: Int) {
@@ -153,10 +148,28 @@ class ModsEditorScreen(
         rebuildWidgets()
     }
 
-    private fun visibleCount(): Int {
+    private fun visibleCount(): Int = filteredMods().size
+
+    private fun filteredMods(): List<Pair<Int, RequiredMod>> {
         val query = searchText.trim().lowercase()
-        return session.config.activeModEntries().count { mod ->
-            query.isEmpty() || listOf(mod.name, mod.modId, mod.filePattern).any { it?.lowercase()?.contains(query) == true }
+        val values = session.config.activeModEntries().withIndex().map { it.index to it.value }
+            .filter { (_, mod) ->
+                query.isEmpty() || listOf(
+                    mod.name,
+                    mod.modId,
+                    mod.filePattern,
+                    mod.authors.orEmpty().joinToString(" "),
+                    mod.links.orEmpty().joinToString(" ") { it.resolvedType().name },
+                ).any { it?.lowercase()?.contains(query) == true }
+            }
+        return when (sortMode) {
+            SortMode.CONFIGURED -> values
+            SortMode.NAME -> values.sortedBy { it.second.displayName().lowercase() }
+            SortMode.CATEGORY -> values.sortedWith(compareBy({ it.second.resolvedCategory() }, { it.second.displayName().lowercase() }))
         }
+    }
+
+    private fun refreshList() {
+        modsList.replaceItems(filteredMods())
     }
 }

@@ -185,11 +185,7 @@ private class TranslationFieldsList(
             hovered: Boolean,
             partialTick: Float,
         ) {
-            guiGraphics.fill(left, top, left + width, top + height - 2, if (hovered) 0xE0222D3E.toInt() else 0xC5161D29.toInt())
-            guiGraphics.fill(left, top, left + 2, top + height - 2, 0xFF9B7BFF.toInt())
-            guiGraphics.fill(left + 2, top, left + width, top + 1, 0x4A5A708A)
-            guiGraphics.fill(left + width - 1, top + 1, left + width, top + height - 2, 0x334D6077)
-            guiGraphics.fill(left + 2, top + height - 3, left + width, top + height - 2, 0x334D6077)
+            drawEditorRow(guiGraphics, left, top, width, height, hovered)
             guiGraphics.drawString(font, key, left + 7, top + 4, 0x90A7BC, false)
             field.x = left + 7
             field.y = top + 15

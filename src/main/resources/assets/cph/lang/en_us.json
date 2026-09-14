@@ -115,6 +115,8 @@
   "cph.editor.link.metadata.loading": "Loading…",
   "cph.editor.link.metadata.done": "Project metadata imported",
   "cph.editor.link.metadata.failed": "Could not import metadata",
+  "cph.editor.link.advanced.show": "Advanced fields",
+  "cph.editor.link.advanced.hide": "Hide advanced",
   "cph.editor.descriptions.title": "Descriptions for %s",
   "cph.editor.descriptions.subtitle": "One description per locale with automatic fallback",
   "cph.editor.descriptions.add": "Add locale",
