@@ -9,7 +9,6 @@ import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import net.minecraft.util.FormattedCharSequence
 import net.neoforged.neoforge.client.gui.widget.ScrollPanel
-import org.bmp.cph.config.ModCategory
 import org.bmp.cph.config.ResolvedMenuText
 import org.bmp.cph.client.download.SecureDownloadScreen
 import org.bmp.cph.client.editor.EditorScreenBase
@@ -32,8 +31,8 @@ class ModDetailsScreen(
     override fun init() {
         val contentWidth = (width - 24).coerceIn(120, 720)
         val left = (width - contentWidth) / 2
-        val top = 54
-        val footerTop = height - 34
+        val top = 41
+        val footerTop = height - 30
         panelLeft = left
         panelTop = top
         panelWidth = contentWidth
@@ -50,31 +49,21 @@ class ModDetailsScreen(
             )
         )
 
-        val gap = 6
-        val buttonWidth = (contentWidth - gap) / 2
-        val downloadButton = TechButton.builder(Component.literal(downloadLabel())) { openDownload() }
+        val downloadText = Component.literal(downloadLabel())
+        val downloadButton = TechButton.builder(downloadText) { openDownload() }
                 .style(TechButtonStyle.PRIMARY)
-                .bounds(left, height - 27, buttonWidth, 20)
+                .bounds(0, 0, compactButtonWidth(downloadText, 78), 18)
                 .build()
         downloadButton.active = result.mod.availableLinks().isNotEmpty()
-        addRenderableWidget(downloadButton)
-        addRenderableWidget(
-            TechButton.builder(Component.literal(text.backButton)) { onClose() }
-                .style(TechButtonStyle.GHOST)
-                .bounds(left + buttonWidth + gap, height - 27, buttonWidth, 20)
-                .build()
-        )
+        val backText = Component.literal(text.backButton)
+        val back = TechButton.builder(backText) { onClose() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(backText), 18).build()
+        addFooterActions(back, downloadButton)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         drawHeader(guiGraphics)
         drawPanel(guiGraphics, panelLeft, panelTop, panelLeft + panelWidth, panelBottom)
-        val category = result.mod.resolvedCategory()
-        val categoryText = if (category == ModCategory.REQUIRED) text.requiredLabel else text.recommendedLabel
-        val color = if (category == ModCategory.REQUIRED) 0xE46A6A else 0xE0B85B
-        val labelWidth = font.width(categoryText) + 14
-        guiGraphics.fill(width / 2 - labelWidth / 2, 29 + slideOffset(6), width / 2 + labelWidth / 2, 42 + slideOffset(6), animatedColor(0x172231))
-        guiGraphics.drawCenteredString(font, categoryText, width / 2, 31 + slideOffset(6), animatedColor(color))
     }
 
     private fun detailsLines(maxWidth: Int): List<FormattedCharSequence> = buildList {

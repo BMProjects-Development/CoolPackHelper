@@ -28,6 +28,9 @@ internal object EditorTheme {
     const val TEXT_MUTED = 0xFF989DA8.toInt()
     const val ACCENT = 0xFF76AFC8.toInt()
     const val ACCENT_PURPLE = 0xFFA795C8.toInt()
+    const val HEADER_HEIGHT = 36
+    const val FOOTER_HEIGHT = 28
+    const val CONTROL_HEIGHT = 18
 }
 
 internal fun fillRoundedRect(
@@ -79,8 +82,9 @@ internal fun drawEditorRow(
     accent: Int? = null,
 ) {
     val background = if (hovered) EditorTheme.SURFACE_HOVER else EditorTheme.SURFACE
-    drawRoundedOutline(graphics, left, top, left + width, top + height - 2, 4, if (hovered) EditorTheme.BORDER else EditorTheme.BORDER_SOFT, background)
-    accent?.let { fillRoundedRect(graphics, left + 6, top + 6, left + 9, top + height - 8, 2, it) }
+    graphics.fill(left, top, left + width, top + height - 1, background)
+    graphics.fill(left, top + height - 2, left + width, top + height - 1, EditorTheme.BORDER_SOFT)
+    accent?.let { graphics.fill(left, top + 5, left + 2, top + height - 6, it) }
 }
 
 /**
@@ -166,29 +170,46 @@ abstract class EditorScreenBase(
 
     protected fun renderEditorBackground(guiGraphics: GuiGraphics) {
         guiGraphics.fillGradient(0, 0, width, height, EditorTheme.BACKGROUND_TOP, EditorTheme.BACKGROUND_BOTTOM)
-        guiGraphics.fill(0, 0, width, 44, EditorTheme.TOP_BAR)
-        guiGraphics.fill(0, 43, width, 44, EditorTheme.BORDER)
-        guiGraphics.fill(0, height - 34, width, height, 0xB7101115.toInt())
-        guiGraphics.fill(0, height - 35, width, height - 34, EditorTheme.BORDER_SOFT)
+        guiGraphics.fill(0, 0, width, EditorTheme.HEADER_HEIGHT, EditorTheme.TOP_BAR)
+        guiGraphics.fill(0, EditorTheme.HEADER_HEIGHT - 1, width, EditorTheme.HEADER_HEIGHT, EditorTheme.BORDER_SOFT)
+        guiGraphics.fill(0, height - EditorTheme.FOOTER_HEIGHT, width, height, 0xD7101115.toInt())
+        guiGraphics.fill(0, height - EditorTheme.FOOTER_HEIGHT, width, height - EditorTheme.FOOTER_HEIGHT + 1, EditorTheme.BORDER_SOFT)
     }
 
     protected fun drawHeader(guiGraphics: GuiGraphics, subtitle: Component? = null) {
-        val offset = slideOffset(12)
-        val left = 14
-        val titleWidth = (width - 86).coerceAtLeast(30)
-        guiGraphics.drawString(font, font.plainSubstrByWidth(title.string, titleWidth), left, 10 + offset, animatedColor(EditorTheme.TEXT), false)
+        val offset = slideOffset(8)
+        val left = 11
+        val titleWidth = (width - 22).coerceAtLeast(30)
+        guiGraphics.drawString(font, font.plainSubstrByWidth(title.string, titleWidth), left, 7 + offset, animatedColor(EditorTheme.TEXT), false)
         subtitle?.let {
-            guiGraphics.drawString(font, font.plainSubstrByWidth(it.string, titleWidth), left, 25 + offset, animatedColor(EditorTheme.TEXT_MUTED), false)
+            guiGraphics.drawString(font, font.plainSubstrByWidth(it.string, titleWidth), left, 20 + offset, animatedColor(EditorTheme.TEXT_MUTED), false)
         }
-        drawRoundedOutline(
-            guiGraphics, width - 58, 11 + offset, width - 14, 31 + offset, 5,
-            animatedColor(EditorTheme.BORDER), animatedColor(EditorTheme.TOP_BAR),
-        )
-        guiGraphics.drawCenteredString(font, "CPH", width - 36, 17 + offset, animatedColor(EditorTheme.TEXT_MUTED))
     }
 
     protected fun drawPanel(guiGraphics: GuiGraphics, left: Int, top: Int, right: Int, bottom: Int, hovered: Boolean = false) {
         drawRoundedOutline(guiGraphics, left, top, right, bottom, 6, if (hovered) 0xFF454A54.toInt() else EditorTheme.BORDER, if (hovered) panelHover else panel)
+    }
+
+    protected fun compactButtonWidth(message: Component, minimum: Int = 58, maximum: Int = 150): Int =
+        (font.width(message) + 18).coerceIn(minimum, maximum)
+
+    protected fun addFooterActions(vararg buttons: TechButton) {
+        val gap = 5
+        val available = (width - 16).coerceAtLeast(40)
+        var totalWidth = buttons.sumOf { it.width } + gap * (buttons.size - 1).coerceAtLeast(0)
+        if (totalWidth > available && buttons.isNotEmpty()) {
+            val compactWidth = ((available - gap * (buttons.size - 1)) / buttons.size).coerceAtLeast(24)
+            buttons.forEach { it.width = compactWidth }
+            totalWidth = buttons.sumOf { it.width } + gap * (buttons.size - 1).coerceAtLeast(0)
+        }
+        var buttonX = (width - 10 - totalWidth).coerceAtLeast(8)
+        buttons.forEach { button ->
+            button.x = buttonX
+            button.y = height - 23
+            button.height = EditorTheme.CONTROL_HEIGHT
+            addRenderableWidget(button)
+            buttonX += button.width + gap
+        }
     }
 }
 
@@ -225,20 +246,29 @@ class TechButton private constructor(
         if (kotlin.math.abs(target - hoverProgress) < .01f) hoverProgress = target
 
         val colors = when (style) {
-            TechButtonStyle.PRIMARY -> Triple(0xEF35586A.toInt(), 0xFF416D82.toInt(), EditorTheme.ACCENT)
-            TechButtonStyle.DANGER -> Triple(0xE83A252A.toInt(), 0xF44C2C34.toInt(), 0xFFD47782.toInt())
-            TechButtonStyle.GHOST -> Triple(0xC817191E.toInt(), 0xF024272D.toInt(), 0xFF6D737E.toInt())
-            TechButtonStyle.CARD -> Triple(0xF0191B20.toInt(), 0xFF24272E.toInt(), EditorTheme.ACCENT)
-            TechButtonStyle.SECONDARY -> Triple(0xEE24272D.toInt(), 0xFF30343C.toInt(), 0xFF858B96.toInt())
+            TechButtonStyle.PRIMARY -> Triple(0xEC1C2025.toInt(), 0xFF282E34.toInt(), EditorTheme.ACCENT)
+            TechButtonStyle.DANGER -> Triple(0xEC1C1D21.toInt(), 0xFF2B2428.toInt(), 0xFFB96E78.toInt())
+            TechButtonStyle.GHOST -> Triple(0x0017191E, 0xF0202328.toInt(), 0xFF656B74.toInt())
+            TechButtonStyle.CARD -> Triple(0xF0191B20.toInt(), 0xFF22252A.toInt(), 0xFF737982.toInt())
+            TechButtonStyle.SECONDARY -> Triple(0xEC1C1F24.toInt(), 0xFF272B31.toInt(), 0xFF6F757E.toInt())
         }
         val background = blend(colors.first, colors.second, hoverProgress)
         val accentColor = if (active) colors.third else 0xFF526070.toInt()
-        val outline = withAlpha(accentColor, if (isHoveredOrFocused) 150 else if (style == TechButtonStyle.DANGER) 92 else 45)
+        val outline = withAlpha(accentColor, if (isHoveredOrFocused) 145 else when (style) {
+            TechButtonStyle.PRIMARY -> 82
+            TechButtonStyle.DANGER -> 62
+            TechButtonStyle.GHOST -> 18
+            else -> 40
+        })
         drawRoundedOutline(guiGraphics, x, y, x + width, y + height, if (style == TechButtonStyle.CARD) 6 else 4, outline, background)
 
         val minecraft = net.minecraft.client.Minecraft.getInstance()
         val font = minecraft.font
-        val textColor = if (active) EditorTheme.TEXT else 0xFF666B74.toInt()
+        val textColor = if (!active) 0xFF666B74.toInt() else when (style) {
+            TechButtonStyle.PRIMARY -> 0xFFDDE8EC.toInt()
+            TechButtonStyle.DANGER -> 0xFFE0B4B9.toInt()
+            else -> EditorTheme.TEXT
+        }
         if (style == TechButtonStyle.CARD) {
             val textX = x + 12
             guiGraphics.drawString(font, font.plainSubstrByWidth(message.string, width - 26), textX, y + 10, textColor, false)

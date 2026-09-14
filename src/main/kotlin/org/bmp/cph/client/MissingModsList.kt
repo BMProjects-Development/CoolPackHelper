@@ -33,7 +33,7 @@ class MissingModsList(
     width,
     height,
     top,
-    if (compact) 52 else 82,
+    if (compact || rowWidth < 460) 58 else 54,
 ) {
     init {
         results.forEach { addEntry(ModEntry(it, minecraft.font)) }
@@ -51,12 +51,12 @@ class MissingModsList(
         private val downloadButton = TechButton.builder(Component.literal(buttonLabel())) { onDownload(result) }
             .style(TechButtonStyle.PRIMARY)
             .tooltip(Tooltip.create(Component.literal(links.joinToString("\n") { it.displayLabel() })))
-            .bounds(0, 0, 160, 20)
+            .bounds(0, 0, 90, 18)
             .build()
         private val detailsButton = TechButton.builder(Component.literal(text.detailsButton)) { onDetails(result) }
             .style(TechButtonStyle.GHOST)
             .createNarration { Component.literal(narrationText()) }
-            .bounds(0, 0, 160, 20)
+            .bounds(0, 0, 62, 18)
             .build()
 
         init {
@@ -86,7 +86,8 @@ class MissingModsList(
 
             val categoryLabel = if (category == ModCategory.REQUIRED) text.requiredLabel else text.recommendedLabel
             val categoryWidth = font.width(categoryLabel)
-            val iconSize = if (result.mod.iconUrl.isNullOrBlank()) 0 else if (compact) 25 else 38
+            val narrow = width < 460
+            val iconSize = if (result.mod.iconUrl.isNullOrBlank()) 0 else 28
             val textLeft = left + 15 + if (iconSize == 0) 0 else iconSize + 7
             if (iconSize > 0) {
                 val iconY = animatedTop + 6
@@ -98,7 +99,11 @@ class MissingModsList(
                     )
                 }
             }
-            val nameWidth = (width - categoryWidth - 15 - (textLeft - left)).coerceAtLeast(30)
+            val detailsWidth = (font.width(text.detailsButton) + 16).coerceIn(52, 78)
+            val downloadWidth = (font.width(buttonLabel()) + 16).coerceIn(68, 112)
+            val actionsWidth = detailsWidth + downloadWidth + 4
+            val reservedActions = if (narrow) 0 else actionsWidth + 12
+            val nameWidth = (width - categoryWidth - 15 - (textLeft - left) - reservedActions).coerceAtLeast(30)
             val name = font.plainSubstrByWidth(result.mod.displayName(), nameWidth)
             guiGraphics.drawString(font, name, textLeft, animatedTop + 3, 0xFFFFFF, false)
             guiGraphics.drawString(font, categoryLabel, left + width - categoryWidth - 7, animatedTop + 3, accent, false)
@@ -118,20 +123,23 @@ class MissingModsList(
                 false,
             )
 
-            if (!compact) {
+            if (!compact && !narrow) {
                 val description = result.mod.localizedDescription(languageCode, text.fallbackLanguage)
-                font.split(Component.literal(description), (width - (textLeft - left) - 7).coerceAtLeast(30)).take(2).forEachIndexed { line, value ->
-                    guiGraphics.drawString(font, value, textLeft, animatedTop + 29 + line * 10, 0xAFAFAF, false)
-                }
+                guiGraphics.drawString(
+                    font,
+                    font.plainSubstrByWidth(description, (width - (textLeft - left) - actionsWidth - 18).coerceAtLeast(30)),
+                    textLeft,
+                    animatedTop + 28,
+                    0xAFAFAF,
+                    false,
+                )
             }
 
-            val totalButtonWidth = (width - 14).coerceAtMost(390)
-            val buttonWidth = (totalButtonWidth - 4) / 2
-            downloadButton.width = buttonWidth
-            detailsButton.width = buttonWidth
-            detailsButton.x = left + width - totalButtonWidth - 7
-            detailsButton.y = animatedTop + if (compact) 28 else 56
-            downloadButton.x = detailsButton.x + buttonWidth + 4
+            downloadButton.width = downloadWidth
+            detailsButton.width = detailsWidth
+            detailsButton.x = left + width - actionsWidth - 7
+            detailsButton.y = if (narrow) animatedTop + height - 24 else animatedTop + (height - 20) / 2
+            downloadButton.x = detailsButton.x + detailsWidth + 4
             downloadButton.y = detailsButton.y
             detailsButton.render(guiGraphics, mouseX, mouseY, partialTick)
             downloadButton.render(guiGraphics, mouseX, mouseY, partialTick)

@@ -64,7 +64,7 @@ class StyledActionList<T>(
             TechButton.builder(action.label()) { action.run() }
                 .style(action.style())
                 .tooltip(action.tooltip?.let(Tooltip::create))
-                .bounds(0, 0, action.width, 20)
+                .bounds(0, 0, action.width, 18)
                 .build()
         }
         private val rowButton = onRowClick?.takeIf { rowClickable(value) }?.let { open ->
@@ -131,7 +131,7 @@ class StyledActionList<T>(
                 button.setTechStyle(action.style())
                 button.active = action.enabled()
                 button.x = buttonX
-                button.y = top + (height - 22) / 2
+                button.y = top + (height - 20) / 2
                 button.render(guiGraphics, mouseX, mouseY, partialTick)
                 buttonX += action.width + 4
             }

@@ -19,10 +19,10 @@ class DescriptionsEditorScreen(
         val list = StyledActionList(
             minecraft ?: net.minecraft.client.Minecraft.getInstance(),
             listWidth,
-            (height - 83).coerceAtLeast(38),
-            49,
+            (height - 72).coerceAtLeast(38),
+            41,
             (listWidth - 18).coerceIn(100, 650),
-            40,
+            36,
             entries,
             titleOf = { it.key },
             subtitleOf = { it.value },
@@ -39,13 +39,12 @@ class DescriptionsEditorScreen(
         )
         list.x = 8
         addRenderableWidget(list)
-        val half = (w - 6) / 2
-        addRenderableWidget(
-            TechButton.builder(tr("descriptions.add")) {
+        val add = TechButton.builder(tr("descriptions.add")) {
                 minecraft?.setScreen(DescriptionEntryEditorScreen(this, mod, null))
-            }.style(TechButtonStyle.PRIMARY).bounds(x, height - 27, half, 20).build()
-        )
-        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(x + half + 6, height - 27, half, 20).build())
+            }.style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(tr("descriptions.add")), 18).build()
+        val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
+        addFooterActions(back, add)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -77,7 +76,9 @@ class DescriptionEntryEditorScreen(
             it.setCharacterLimit(8192)
             addRenderableWidget(it)
         }
-        addRenderableWidget(TechButton.builder(tr("save_back")) { save() }.style(TechButtonStyle.PRIMARY).bounds(x, height - 27, w, 20).build())
+        val save = TechButton.builder(tr("save_back")) { save() }.style(TechButtonStyle.PRIMARY)
+            .bounds(0, 0, compactButtonWidth(tr("save_back"), 90), 18).build()
+        addFooterActions(save)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {

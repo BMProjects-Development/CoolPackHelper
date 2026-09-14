@@ -31,13 +31,13 @@ class CurseForgeKeyScreen(
         }
         addRenderableWidget(
             TechButton.builder(rememberText()) { button -> remember = !remember; button.message = rememberText() }
-                .bounds(x, 121, w, 20).build()
+                .style(TechButtonStyle.SECONDARY).bounds(x, 121, compactButtonWidth(rememberText(), 110, w), 18).build()
         )
-        val half = (w - 8) / 2
-        addRenderableWidget(
-            TechButton.builder(tr("scan.start")) { start() }.style(TechButtonStyle.PRIMARY).bounds(x, height - 27, half, 20).build()
-        )
-        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(x + half + 8, height - 27, half, 20).build())
+        val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
+        val start = TechButton.builder(tr("scan.start")) { start() }.style(TechButtonStyle.PRIMARY)
+            .bounds(0, 0, compactButtonWidth(tr("scan.start"), 80), 18).build()
+        addFooterActions(back, start)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -100,13 +100,13 @@ class ScanScreen(
                     filter = candidate
                     rebuildWidgets()
                 }.style(if (filter == candidate) TechButtonStyle.PRIMARY else TechButtonStyle.GHOST)
-                    .bounds(x + index * (tabWidth + tabGap), 64, tabWidth, 20)
+                    .bounds(x + index * (tabWidth + tabGap), 53, tabWidth, 18)
                     .build()
             )
         }
         val visibleItems = completed.items.filter(filter::accepts)
-        val listTop = 89
-        val listBottom = height - 34
+        val listTop = 76
+        val listBottom = height - 32
         val listWidth = (width - 16).coerceAtLeast(120)
         val list = StyledActionList(
             minecraft ?: Minecraft.getInstance(),
@@ -152,12 +152,13 @@ class ScanScreen(
         )
         list.x = 8
         addRenderableWidget(list)
-        val half = (w - 8) / 2
-        importButton = TechButton.builder(tr("scan.import", selected.size)) { importSelected() }.style(TechButtonStyle.PRIMARY)
-            .bounds(x, height - 27, half, 20).build()
+        val importText = tr("scan.import", selected.size)
+        importButton = TechButton.builder(importText) { importSelected() }.style(TechButtonStyle.PRIMARY)
+            .bounds(0, 0, compactButtonWidth(importText, 84), 18).build()
         importButton.active = selected.isNotEmpty()
-        addRenderableWidget(importButton)
-        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(x + half + 8, height - 27, half, 20).build())
+        val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
+        addFooterActions(back, importButton)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -237,17 +238,18 @@ class LocalImportScreen(
         val result = artifacts ?: return
         val w = (width - 30).coerceAtMost(540)
         val x = (width - w) / 2
-        val half = (w - 8) / 2
-        val import = TechButton.builder(tr("import.add", result.size)) {
+        val importText = tr("import.add", result.size)
+        val import = TechButton.builder(importText) {
                 val added = session.addDrafts(result.map(LocalModArtifact::toDraft))
                 Minecraft.getInstance().let {
                     SystemToast.add(it.toasts, SystemToast.SystemToastId.PERIODIC_NOTIFICATION, tr("scan.imported"), tr("scan.imported.count", added))
                 }
                 onClose()
-            }.style(TechButtonStyle.PRIMARY).bounds(x, height - 27, half, 20).build()
+            }.style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(importText, 84), 18).build()
         import.active = result.isNotEmpty()
-        addRenderableWidget(import)
-        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(x + half + 8, height - 27, half, 20).build())
+        val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
+        addFooterActions(back, import)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {

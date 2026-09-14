@@ -26,10 +26,10 @@ class MenuTranslationsScreen(
         val list = StyledActionList(
             minecraft ?: net.minecraft.client.Minecraft.getInstance(),
             listWidth,
-            (height - 83).coerceAtLeast(38),
-            49,
+            (height - 72).coerceAtLeast(38),
+            41,
             (listWidth - 18).coerceIn(100, 650),
-            40,
+            36,
             entries,
             titleOf = { it.key },
             subtitleOf = { translationSummary(it.value) },
@@ -49,13 +49,12 @@ class MenuTranslationsScreen(
         )
         list.x = 8
         addRenderableWidget(list)
-        val half = (w - 6) / 2
-        addRenderableWidget(
-            TechButton.builder(tr("translations.add")) {
+        val add = TechButton.builder(tr("translations.add")) {
                 minecraft?.setScreen(MenuTranslationEntryScreen(this, session, null))
-            }.style(TechButtonStyle.PRIMARY).bounds(x, height - 27, half, 20).build()
-        )
-        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(x + half + 6, height - 27, half, 20).build())
+            }.style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(tr("translations.add")), 18).build()
+        val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
+        addFooterActions(back, add)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -85,7 +84,8 @@ class MenuTranslationEntryScreen(
     override fun init() {
         val w = (width - 26).coerceAtMost(680)
         val x = (width - w) / 2
-        localeField = StableEditBox(font, x, 48, w, 20, tr("translation.locale")).also {
+        val localeWidth = (w * .62).toInt().coerceAtLeast(80)
+        localeField = StableEditBox(font, x + w - localeWidth, 42, localeWidth, 18, tr("translation.locale")).also {
             it.value = localeValue
             it.setMaxLength(32)
             it.setResponder { value -> localeValue = value }
@@ -95,23 +95,22 @@ class MenuTranslationEntryScreen(
         val list = TranslationFieldsList(
             minecraft ?: Minecraft.getInstance(),
             listWidth,
-            (height - 116).coerceAtLeast(38),
-            82,
+            (height - 99).coerceAtLeast(38),
+            67,
             (listWidth - 18).coerceIn(100, 680),
             TEXT_FIELDS,
             working,
         )
         list.x = 8
         addRenderableWidget(list)
-        addRenderableWidget(
-            TechButton.builder(tr("save_back")) { saveAndClose() }.style(TechButtonStyle.PRIMARY)
-                .bounds(x, height - 27, w, 20).build()
-        )
+        val save = TechButton.builder(tr("save_back")) { saveAndClose() }.style(TechButtonStyle.PRIMARY)
+            .bounds(0, 0, compactButtonWidth(tr("save_back"), 90), 18).build()
+        addFooterActions(save)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         drawHeader(guiGraphics, tr("translation.subtitle"))
-        guiGraphics.drawString(font, tr("translation.locale"), localeField.x, localeField.y - 10, 0x90A7BC, false)
+        guiGraphics.drawString(font, tr("translation.locale"), xForLabel(localeField), localeField.y + 5, EditorTheme.TEXT_MUTED, false)
     }
 
     private fun saveAndClose() {
@@ -125,6 +124,8 @@ class MenuTranslationEntryScreen(
         }
         onClose()
     }
+
+    private fun xForLabel(field: EditBox): Int = (width - (width - 26).coerceAtMost(680)) / 2
 
     private companion object {
         val TEXT_FIELDS = listOf(
@@ -146,9 +147,9 @@ private class TranslationFieldsList(
     private val rowWidth: Int,
     keys: List<String>,
     working: JsonObject,
-) : ContainerObjectSelectionList<TranslationFieldsList.FieldEntry>(minecraft, width, height, top, 42) {
+) : ContainerObjectSelectionList<TranslationFieldsList.FieldEntry>(minecraft, width, height, top, 30) {
     init {
-        keys.forEach { key -> addEntry(FieldEntry(key, minecraft.font, working, (rowWidth - 14).coerceAtLeast(20))) }
+        keys.forEach { key -> addEntry(FieldEntry(key, minecraft.font, working, (rowWidth * .62).toInt().coerceAtLeast(20))) }
     }
 
     override fun getRowWidth(): Int = rowWidth
@@ -186,9 +187,9 @@ private class TranslationFieldsList(
             partialTick: Float,
         ) {
             drawEditorRow(guiGraphics, left, top, width, height, hovered)
-            guiGraphics.drawString(font, key, left + 7, top + 4, 0x90A7BC, false)
-            field.x = left + 7
-            field.y = top + 15
+            field.x = left + width - field.width - 7
+            field.y = top + 4
+            guiGraphics.drawString(font, font.plainSubstrByWidth(key, (field.x - left - 14).coerceAtLeast(25)), left + 7, top + 10, EditorTheme.TEXT_MUTED, false)
             field.render(guiGraphics, mouseX, mouseY, partialTick)
         }
     }

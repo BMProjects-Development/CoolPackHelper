@@ -38,16 +38,15 @@ class SecureDownloadScreen private constructor(
         val contentWidth = (width - 24).coerceAtMost(720)
         val left = (width - contentWidth) / 2
         val listWidth = (width - 16).coerceAtLeast(120)
-        val footerRows = if (results == null) 1 else 2
-        val footerTop = height - 34 - (footerRows - 1) * 26
-        val listTop = 72
+        val footerTop = height - 30
+        val listTop = 64
         val list = StyledActionList(
             minecraft ?: Minecraft.getInstance(),
             listWidth,
             (footerTop - listTop).coerceAtLeast(38),
             listTop,
             (listWidth - 18).coerceIn(100, 720),
-            44,
+            38,
             resolved,
             titleOf = { it.mod.displayName() },
             subtitleOf = { value -> resultFor(value)?.message ?: resolutionSubtitle(value) },
@@ -82,8 +81,8 @@ class SecureDownloadScreen private constructor(
 
         when {
             running -> Unit
-            results == null -> addInstallFooter(left, contentWidth)
-            else -> addResultFooter(left, contentWidth)
+            results == null -> addInstallFooter()
+            else -> addResultFooter()
         }
     }
 
@@ -145,51 +144,42 @@ class SecureDownloadScreen private constructor(
         }
     }
 
-    private fun addInstallFooter(left: Int, contentWidth: Int) {
+    private fun addInstallFooter() {
         val installable = installableDownloads()
-        val half = (contentWidth - 8) / 2
-        val install = TechButton.builder(Component.translatable("cph.download.install", installable.size)) { installAll() }
+        val installText = Component.translatable("cph.download.install", installable.size)
+        val install = TechButton.builder(installText) { installAll() }
             .style(TechButtonStyle.PRIMARY)
-            .bounds(left, height - 27, half, 20)
+            .bounds(0, 0, compactButtonWidth(installText, 76), 18)
             .build()
         install.active = installable.isNotEmpty()
-        addRenderableWidget(install)
-        addRenderableWidget(
-            TechButton.builder(Component.translatable("cph.download.cancel")) { onClose() }
-                .style(TechButtonStyle.GHOST)
-                .bounds(left + half + 8, height - 27, half, 20)
-                .build()
-        )
+        val cancelText = Component.translatable("cph.download.cancel")
+        val cancel = TechButton.builder(cancelText) { onClose() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(cancelText), 18).build()
+        addFooterActions(cancel, install)
     }
 
-    private fun addResultFooter(left: Int, contentWidth: Int) {
+    private fun addResultFooter() {
         val batch = batchId
         val successful = results.orEmpty().any(InstallResult::success)
-        val half = (contentWidth - 8) / 2
-        val rollback = TechButton.builder(Component.translatable("cph.download.rollback")) { rollback() }
+        val rollbackText = Component.translatable("cph.download.rollback")
+        val rollback = TechButton.builder(rollbackText) { rollback() }
             .style(TechButtonStyle.DANGER)
-            .bounds(left, height - 53, half, 20)
+            .bounds(0, 0, compactButtonWidth(rollbackText, 78), 18)
             .build()
         rollback.active = successful && batch != null
-        addRenderableWidget(rollback)
-        addRenderableWidget(
-            TechButton.builder(Component.translatable("cph.download.open_mods")) { openModsFolder() }
-                .style(TechButtonStyle.GHOST)
-                .bounds(left + half + 8, height - 53, half, 20)
-                .build()
-        )
-        addRenderableWidget(
-            TechButton.builder(Component.translatable("cph.download.close")) { onClose() }
-                .style(TechButtonStyle.GHOST)
-                .bounds(left, height - 27, half, 20)
-                .build()
-        )
-        val exit = TechButton.builder(Component.translatable("cph.download.exit_restart")) { minecraft?.stop() }
+        val folderText = Component.translatable("cph.download.open_mods")
+        val folder = TechButton.builder(folderText) { openModsFolder() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(folderText, 76), 18).build()
+        val closeText = Component.translatable("cph.download.close")
+        val close = TechButton.builder(closeText) { onClose() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(closeText), 18).build()
+        val exitText = Component.translatable("cph.download.exit_restart")
+        val exit = TechButton.builder(exitText) { minecraft?.stop() }
             .style(TechButtonStyle.PRIMARY)
-            .bounds(left + half + 8, height - 27, half, 20)
+            .bounds(0, 0, compactButtonWidth(exitText, 82), 18)
             .build()
         exit.active = successful
-        addRenderableWidget(exit)
+        addFooterActions(close, rollback, folder, exit)
     }
 
     private fun installAll() {

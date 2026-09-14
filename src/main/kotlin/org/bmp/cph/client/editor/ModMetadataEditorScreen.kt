@@ -23,38 +23,28 @@ class ModMetadataEditorScreen(parent: Screen, private val mod: RequiredMod) :
     override fun init() {
         val contentWidth = (width - 24).coerceAtMost(650)
         val left = (width - contentWidth) / 2
-        val compactFooter = width < 520
-        val footerHeight = if (compactFooter) 60 else 34
         val listWidth = (width - 16).coerceAtLeast(120)
         val list = MetadataFieldsList(
-            minecraft ?: Minecraft.getInstance(), listWidth, (height - 49 - footerHeight).coerceAtLeast(38), 49,
+            minecraft ?: Minecraft.getInstance(), listWidth, (height - 72).coerceAtLeast(38), 41,
             (listWidth - 18).coerceIn(100, 650), mod,
         )
         list.x = 8
         addRenderableWidget(list)
-        if (compactFooter) {
-            val half = (contentWidth - 6) / 2
-            addRenderableWidget(importButton(DownloadSourceType.MODRINTH, left, height - 53, half))
-            addRenderableWidget(importButton(DownloadSourceType.CURSEFORGE, left + half + 6, height - 53, half))
-            addRenderableWidget(TechButton.builder(tr("save_back")) { onClose() }.style(TechButtonStyle.GHOST)
-                .bounds(left, height - 27, contentWidth, 20).build())
-        } else {
-            val third = (contentWidth - 12) / 3
-            addRenderableWidget(importButton(DownloadSourceType.MODRINTH, left, height - 27, third))
-            addRenderableWidget(importButton(DownloadSourceType.CURSEFORGE, left + third + 6, height - 27, third))
-            addRenderableWidget(TechButton.builder(tr("save_back")) { onClose() }.style(TechButtonStyle.GHOST)
-                .bounds(left + (third + 6) * 2, height - 27, third, 20).build())
-        }
+        val back = TechButton.builder(tr("save_back")) { onClose() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(tr("save_back"), 80), 18).build()
+        addFooterActions(back, importButton(DownloadSourceType.MODRINTH), importButton(DownloadSourceType.CURSEFORGE))
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         drawHeader(guiGraphics, tr("metadata.subtitle"))
     }
 
-    private fun importButton(type: DownloadSourceType, x: Int, y: Int, width: Int): TechButton =
-        TechButton.builder(tr("metadata.import.${type.name.lowercase()}")) {
+    private fun importButton(type: DownloadSourceType): TechButton {
+        val text = tr("metadata.import.${type.name.lowercase()}")
+        return TechButton.builder(text) {
             minecraft?.setScreen(MetadataImportScreen(this, mod, type))
-        }.style(TechButtonStyle.PRIMARY).bounds(x, y, width, 20).build()
+        }.style(TechButtonStyle.SECONDARY).bounds(0, 0, compactButtonWidth(text, 90), 18).build()
+    }
 }
 
 private class MetadataImportScreen(
@@ -90,13 +80,13 @@ private class MetadataImportScreen(
                 addRenderableWidget(it)
             }
         }
-        val half = (contentWidth - 6) / 2
-        val import = TechButton.builder(tr(if (loading) "metadata.import.loading" else "metadata.import.action")) { import() }
-            .style(TechButtonStyle.PRIMARY).bounds(left, height - 27, half, 20).build()
+        val importText = tr(if (loading) "metadata.import.loading" else "metadata.import.action")
+        val import = TechButton.builder(importText) { import() }
+            .style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(importText, 90), 18).build()
         import.active = !loading
-        addRenderableWidget(import)
-        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
-            .bounds(left + half + 6, height - 27, half, 20).build())
+        val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
+        addFooterActions(back, import)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -162,7 +152,7 @@ private class MetadataFieldsList(
     top: Int,
     private val rowWidth: Int,
     mod: RequiredMod,
-) : ContainerObjectSelectionList<MetadataFieldsList.FieldEntry>(minecraft, width, height, top, 54) {
+) : ContainerObjectSelectionList<MetadataFieldsList.FieldEntry>(minecraft, width, height, top, 40) {
     data class Field(val label: Component, val value: () -> String, val wraps: Boolean = false, val changed: (String) -> Unit)
 
     init {
@@ -173,7 +163,7 @@ private class MetadataFieldsList(
                 mod.authors = it.split(',').map(String::trim).filter(String::isNotBlank).distinct().take(32)
             },
             Field(tr("metadata.license"), { mod.license.orEmpty() }) { mod.license = it.clean() },
-        ).forEach { addEntry(FieldEntry(it, minecraft.font, (rowWidth - 14).coerceAtLeast(20))) }
+        ).forEach { addEntry(FieldEntry(it, minecraft.font, (rowWidth * .62).toInt().coerceAtLeast(20))) }
     }
 
     override fun getRowWidth(): Int = rowWidth
@@ -196,15 +186,17 @@ private class MetadataFieldsList(
             mouseX: Int, mouseY: Int, hovered: Boolean, partialTick: Float,
         ) {
             drawEditorRow(guiGraphics, left, top, width, height, hovered)
-            guiGraphics.drawString(font, label, left + 7, top + 4, 0x90A7BC, false)
+            val fieldWidth = singleLineField?.width ?: wrappedField?.width ?: 0
+            val fieldX = left + width - fieldWidth - 7
+            guiGraphics.drawString(font, font.plainSubstrByWidth(label.string, (fieldX - left - 14).coerceAtLeast(25)), left + 7, top + 15, EditorTheme.TEXT_MUTED, false)
             singleLineField?.let {
-                it.x = left + 7
-                it.y = top + 15
+                it.x = fieldX
+                it.y = top + 10
                 it.render(guiGraphics, mouseX, mouseY, partialTick)
             }
             wrappedField?.let {
-                it.x = left + 7
-                it.y = top + 15
+                it.x = fieldX
+                it.y = top + 4
                 it.render(guiGraphics, mouseX, mouseY, partialTick)
             }
         }

@@ -31,8 +31,8 @@ class InstallationHistoryScreen(parent: Screen) :
         val left = (width - contentWidth) / 2
         val listWidth = (width - 16).coerceAtLeast(120)
         val list = StyledActionList(
-            minecraft ?: Minecraft.getInstance(), listWidth, (height - 83).coerceAtLeast(38), 49,
-            (listWidth - 18).coerceIn(100, 720), 44, batches,
+            minecraft ?: Minecraft.getInstance(), listWidth, (height - 72).coerceAtLeast(38), 41,
+            (listWidth - 18).coerceIn(100, 720), 38, batches,
             titleOf = { batch -> batch.records.joinToString(", ") { it.modName } },
             subtitleOf = { batch ->
                 Component.translatable(
@@ -60,10 +60,10 @@ class InstallationHistoryScreen(parent: Screen) :
         )
         list.x = 8
         addRenderableWidget(list)
-        addRenderableWidget(
-            TechButton.builder(Component.translatable("cph.history.back")) { onClose() }
-                .style(TechButtonStyle.GHOST).bounds(left, height - 27, contentWidth, 20).build()
-        )
+        val backText = Component.translatable("cph.history.back")
+        val back = TechButton.builder(backText) { onClose() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(backText), 18).build()
+        addFooterActions(back)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {

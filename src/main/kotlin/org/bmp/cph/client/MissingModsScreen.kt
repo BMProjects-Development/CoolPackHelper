@@ -32,8 +32,7 @@ class MissingModsScreen(
     override fun init() {
         compactHeader = height < 280
         listTop = if (compactHeader) 72 else 98
-        val wideFooter = width >= 560
-        val footerTop = height - if (wideFooter) 34 else 84
+        val footerTop = height - 30
         listBottom = footerTop
         val listHeight = (footerTop - listTop).coerceAtLeast(40)
         val listWidth = (width - 16).coerceAtLeast(120)
@@ -56,7 +55,7 @@ class MissingModsScreen(
         )
         list.x = 8
         addRenderableWidget(list)
-        addFooterButtons(wideFooter)
+        addFooterButtons()
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -82,32 +81,20 @@ class MissingModsScreen(
         super.onClose()
     }
 
-    private fun addFooterButtons(wide: Boolean) {
-        if (wide) {
-            val totalWidth = (width - 24).coerceAtMost(720)
-            val buttonWidth = (totalWidth - 18) / 4
-            val startX = (width - totalWidth) / 2
-            val y = height - 27
-            addRenderableWidget(button(text.recheckButton, startX, y, buttonWidth, ::recheck))
-            addRenderableWidget(bulkDownloadButton(startX + buttonWidth + 6, y, buttonWidth))
-            addRenderableWidget(button(text.openModsFolderButton, startX + (buttonWidth + 6) * 2, y, buttonWidth, ::openModsFolder, TechButtonStyle.GHOST))
-            addRenderableWidget(button(text.continueButton, startX + (buttonWidth + 6) * 3, y, buttonWidth, { onClose() }, TechButtonStyle.GHOST))
-        } else {
-            val totalWidth = (width - 20).coerceAtMost(400)
-            val half = (totalWidth - 6) / 2
-            val startX = (width - totalWidth) / 2
-            addRenderableWidget(bulkDownloadButton(startX, height - 77, totalWidth))
-            addRenderableWidget(button(text.recheckButton, startX, height - 51, half, ::recheck))
-            addRenderableWidget(button(text.openModsFolderButton, startX + half + 6, height - 51, half, ::openModsFolder))
-            addRenderableWidget(button(text.continueButton, width / 2 - totalWidth / 2, height - 27, totalWidth, { onClose() }, TechButtonStyle.PRIMARY))
-        }
+    private fun addFooterButtons() {
+        val continueButton = button(text.continueButton, ::onClose, TechButtonStyle.GHOST)
+        val folderButton = button(text.openModsFolderButton, ::openModsFolder, TechButtonStyle.GHOST)
+        val recheckButton = button(text.recheckButton, ::recheck)
+        addFooterActions(continueButton, folderButton, recheckButton, bulkDownloadButton())
     }
 
-    private fun bulkDownloadButton(x: Int, y: Int, width: Int): TechButton =
-        TechButton.builder(Component.translatable("cph.download.install_missing", results.size)) { openBulkDownload() }
-            .style(TechButtonStyle.PRIMARY).bounds(x, y, width, 20).build().also {
+    private fun bulkDownloadButton(): TechButton {
+        val label = Component.translatable("cph.download.install_missing", results.size)
+        return TechButton.builder(label) { openBulkDownload() }
+            .style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(label, 86), 18).build().also {
                 it.active = results.any { result -> result.mod.availableLinks().isNotEmpty() }
             }
+    }
 
     private fun addTabs(y: Int) {
         val totalWidth = (width - 20).coerceAtMost(600)
@@ -123,19 +110,16 @@ class MissingModsScreen(
                 selectedTab = tab
                 rebuildWidgets()
             }.style(if (selectedTab == tab) TechButtonStyle.PRIMARY else TechButtonStyle.GHOST)
-                .bounds(startX + index * (tabWidth + 4), y, tabWidth, 20).build()
+                .bounds(startX + index * (tabWidth + 4), y, tabWidth, 18).build()
             addRenderableWidget(button)
         }
     }
 
-    private fun button(
-        label: String,
-        x: Int,
-        y: Int,
-        width: Int,
-        action: () -> Unit,
-        style: TechButtonStyle = TechButtonStyle.SECONDARY,
-    ): TechButton = TechButton.builder(Component.literal(label)) { action() }.style(style).bounds(x, y, width, 20).build()
+    private fun button(label: String, action: () -> Unit, style: TechButtonStyle = TechButtonStyle.SECONDARY): TechButton {
+        val message = Component.literal(label)
+        return TechButton.builder(message) { action() }.style(style)
+            .bounds(0, 0, compactButtonWidth(message, 62), 18).build()
+    }
 
     private fun openDownload(result: ModCheckResult) {
         val links = result.mod.availableLinks()

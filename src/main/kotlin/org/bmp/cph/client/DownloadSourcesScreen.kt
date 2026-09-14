@@ -20,16 +20,14 @@ class DownloadSourcesScreen(
     private val text: ResolvedMenuText,
 ) : EditorScreenBase(Component.literal(text.sourcesTitle.replace("{mod}", result.mod.displayName())), parent) {
     override fun init() {
-        val buttonWidth = (width - 32).coerceIn(100, 360)
-        val x = (width - buttonWidth) / 2
         val listWidth = (width - 16).coerceAtLeast(120)
         val list = StyledActionList(
             minecraft ?: net.minecraft.client.Minecraft.getInstance(),
             listWidth,
-            (height - 83).coerceAtLeast(38),
-            49,
+            (height - 72).coerceAtLeast(38),
+            41,
             (listWidth - 18).coerceIn(100, 620),
-            40,
+            36,
             links,
             titleOf = { it.displayLabel() },
             subtitleOf = { it.downloadUrl?.takeIf(String::isNotBlank) ?: it.url.orEmpty() },
@@ -50,12 +48,10 @@ class DownloadSourcesScreen(
         list.x = 8
         addRenderableWidget(list)
 
-        addRenderableWidget(
-            TechButton.builder(Component.literal(text.continueButton)) { onClose() }
-                .style(TechButtonStyle.GHOST)
-                .bounds(x, height - 27, buttonWidth, 20)
-                .build()
-        )
+        val closeText = Component.literal(text.continueButton)
+        val close = TechButton.builder(closeText) { onClose() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(closeText), 18).build()
+        addFooterActions(close)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {

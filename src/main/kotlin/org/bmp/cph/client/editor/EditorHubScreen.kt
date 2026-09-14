@@ -6,6 +6,7 @@ import net.minecraft.client.gui.components.ContainerObjectSelectionList
 import net.minecraft.client.gui.components.events.GuiEventListener
 import net.minecraft.client.gui.narration.NarratableEntry
 import net.minecraft.client.gui.components.toasts.SystemToast
+import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import org.bmp.cph.client.MissingModDetector
@@ -52,32 +53,52 @@ class EditorHubScreen(
             minecraft?.setScreen(InstallationHistoryScreen(this))
         }
 
-        val columns = if (width >= 620) 2 else 1
-        val listWidth = (width - 16).coerceAtLeast(120)
-        val list = EditorHubCardsList(
-            minecraft ?: Minecraft.getInstance(), listWidth, (height - 83).coerceAtLeast(38), 49,
-            (listWidth - 18).coerceIn(100, 760), columns, cards,
+        val wide = width >= 520
+        val listWidth = if (wide) (width * .31).toInt().coerceIn(170, 220) else (width - 16).coerceAtLeast(120)
+        val list = EditorHubNavigationList(
+            minecraft ?: Minecraft.getInstance(), listWidth, (height - 72).coerceAtLeast(38), 41,
+            (listWidth - 12).coerceAtLeast(100), cards,
         )
         list.x = 8
         addRenderableWidget(list)
 
-        val footerWidth = (width - 24).coerceAtMost(500)
-        val half = (footerWidth - 8) / 2
-        val footerX = (width - footerWidth) / 2
-        addRenderableWidget(
-            TechButton.builder(tr("save")) { save(); Unit }
-                .style(TechButtonStyle.PRIMARY)
-                .bounds(footerX, height - 28, half, 20).build()
-        )
-        addRenderableWidget(
-            TechButton.builder(tr("close")) { closeEditor() }
-                .style(TechButtonStyle.GHOST)
-                .bounds(footerX + half + 8, height - 28, half, 20).build()
-        )
+        val close = TechButton.builder(tr("close")) { closeEditor() }
+            .style(TechButtonStyle.GHOST).bounds(0, 0, compactButtonWidth(tr("close")), 18).build()
+        val save = TechButton.builder(tr("save")) { save(); Unit }
+            .style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(tr("save"), 78), 18).build()
+        addFooterActions(close, save)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         drawHeader(guiGraphics, tr(if (session.dirty) "subtitle.unsaved" else "subtitle"))
+        if (width < 520) return
+
+        val navWidth = (width * .31).toInt().coerceIn(170, 220)
+        val left = navWidth + 17
+        val right = width - 9
+        val top = 41
+        val bottom = height - 34
+        drawPanel(guiGraphics, left, top, right, bottom)
+
+        val pack = session.config.pack
+        val packName = pack?.name?.takeIf(String::isNotBlank) ?: tr("hub.untitled").string
+        val lineWidth = (right - left - 24).coerceAtLeast(30)
+        guiGraphics.drawString(font, font.plainSubstrByWidth(packName, lineWidth), left + 12, top + 12, EditorTheme.TEXT, false)
+        val identity = listOfNotNull(pack?.id?.takeIf(String::isNotBlank), pack?.version?.takeIf(String::isNotBlank)).joinToString("  ·  ")
+        if (identity.isNotEmpty()) guiGraphics.drawString(font, font.plainSubstrByWidth(identity, lineWidth), left + 12, top + 26, EditorTheme.TEXT_MUTED, false)
+
+        val mods = session.config.activeModEntries().size
+        val errors = ConfigValidator.validate(session.config).count { it.severity == IssueSeverity.ERROR }
+        val statsTop = top + 52
+        guiGraphics.fill(left + 12, statsTop - 8, right - 12, statsTop - 7, EditorTheme.BORDER_SOFT)
+        guiGraphics.drawString(font, tr("hub.mods", mods), left + 12, statsTop, EditorTheme.TEXT_MUTED, false)
+        val state = tr(if (errors == 0) "hub.ready" else "hub.errors", errors)
+        guiGraphics.drawString(font, state, left + 12, statsTop + 16, if (errors == 0) 0xFF8DAA96.toInt() else 0xFFC58B91.toInt(), false)
+
+        val hintY = (bottom - 34).coerceAtLeast(statsTop + 38)
+        font.split(tr("hub.hint"), lineWidth).take(3).forEachIndexed { index, line ->
+            guiGraphics.drawString(font, line, left + 12, hintY + index * 11, EditorTheme.TEXT_MUTED, false)
+        }
     }
 
     override fun onClose() = closeEditor()
@@ -116,47 +137,39 @@ class EditorHubScreen(
     }
 }
 
-private class EditorHubCardsList(
+private class EditorHubNavigationList(
     minecraft: Minecraft,
     width: Int,
     height: Int,
     top: Int,
     private val rowWidth: Int,
-    columns: Int,
     cards: List<EditorHubCard>,
-) : ContainerObjectSelectionList<EditorHubCardsList.CardRow>(minecraft, width, height, top, 76) {
+) : ContainerObjectSelectionList<EditorHubNavigationList.NavigationEntry>(minecraft, width, height, top, 27) {
     init {
-        cards.chunked(columns).forEach { addEntry(CardRow(it)) }
+        cards.forEach { addEntry(NavigationEntry(it, rowWidth)) }
     }
 
     override fun getRowWidth(): Int = rowWidth
     override fun getScrollbarPosition(): Int = x + width - 7
 
-    class CardRow(cards: List<EditorHubCard>) : Entry<CardRow>() {
-        private val entries = cards.map { card ->
-            TechButton.builder(Component.literal("${card.glyph}  ").append(card.title)) { card.action() }
-                .subtitle(card.description)
-                .style(TechButtonStyle.CARD)
-                .bounds(0, 0, 100, 68)
-                .build()
-        }
+    class NavigationEntry(card: EditorHubCard, width: Int) : Entry<NavigationEntry>() {
+        private val button = TechButton.builder(Component.literal("${card.glyph}  ").append(card.title)) { card.action() }
+            .tooltip(Tooltip.create(card.description))
+            .style(TechButtonStyle.GHOST)
+            .bounds(0, 0, width, 23)
+            .build()
 
-        override fun children(): List<GuiEventListener> = entries
-        override fun narratables(): List<NarratableEntry> = entries
+        override fun children(): List<GuiEventListener> = listOf(button)
+        override fun narratables(): List<NarratableEntry> = listOf(button)
 
         override fun render(
             guiGraphics: GuiGraphics, index: Int, top: Int, left: Int, width: Int, height: Int,
             mouseX: Int, mouseY: Int, hovered: Boolean, partialTick: Float,
         ) {
-            val gap = 8
-            val cardWidth = ((width - gap * (entries.size - 1)) / entries.size).coerceAtLeast(40)
-            entries.forEachIndexed { cardIndex, button ->
-                button.x = left + cardIndex * (cardWidth + gap)
-                button.y = top + 2
-                button.width = cardWidth
-                button.height = (height - 8).coerceAtLeast(38)
-                button.render(guiGraphics, mouseX, mouseY, partialTick)
-            }
+            button.x = left
+            button.y = top + 1
+            button.width = width
+            button.render(guiGraphics, mouseX, mouseY, partialTick)
         }
     }
 }

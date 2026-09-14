@@ -13,16 +13,34 @@ class UnsavedChangesScreen(
     private val saveAction: () -> Unit,
 ) : EditorScreenBase(tr("unsaved.title"), parent) {
     override fun init() {
-        val buttonWidth = (width - 40).coerceAtMost(360)
-        val x = (width - buttonWidth) / 2
-        val y = height / 2 - 2
-        addRenderableWidget(TechButton.builder(tr("unsaved.save")) { saveAction() }.style(TechButtonStyle.PRIMARY).bounds(x, y, buttonWidth, 20).build())
-        addRenderableWidget(TechButton.builder(tr("unsaved.discard")) { minecraft?.setScreen(destination) }.style(TechButtonStyle.DANGER).bounds(x, y + 26, buttonWidth, 20).build())
-        addRenderableWidget(TechButton.builder(tr("cancel")) { minecraft?.setScreen(previousScreen) }.style(TechButtonStyle.GHOST).bounds(x, y + 52, buttonWidth, 20).build())
+        val cancelText = tr("cancel")
+        val discardText = tr("unsaved.discard")
+        val saveText = tr("unsaved.save")
+        val buttons = listOf(
+            TechButton.builder(cancelText) { minecraft?.setScreen(previousScreen) }.style(TechButtonStyle.GHOST)
+                .bounds(0, 0, compactButtonWidth(cancelText), 18).build(),
+            TechButton.builder(discardText) { minecraft?.setScreen(destination) }.style(TechButtonStyle.DANGER)
+                .bounds(0, 0, compactButtonWidth(discardText, 76), 18).build(),
+            TechButton.builder(saveText) { saveAction() }.style(TechButtonStyle.PRIMARY)
+                .bounds(0, 0, compactButtonWidth(saveText, 76), 18).build(),
+        )
+        val gap = 5
+        val available = (width - 32).coerceAtLeast(90)
+        val natural = buttons.sumOf { it.width } + gap * 2
+        if (natural > available) buttons.forEach { it.width = ((available - gap * 2) / 3).coerceAtLeast(26) }
+        var x = width / 2 - (buttons.sumOf { it.width } + gap * 2) / 2
+        buttons.forEach { button ->
+            button.x = x
+            button.y = height / 2 + 15
+            addRenderableWidget(button)
+            x += button.width + gap
+        }
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         drawHeader(guiGraphics)
+        val panelWidth = (width - 28).coerceAtMost(470)
+        drawPanel(guiGraphics, (width - panelWidth) / 2, height / 2 - 56, (width + panelWidth) / 2, height / 2 + 46)
         font.split(tr("unsaved.message"), (width - 40).coerceAtMost(520)).forEachIndexed { index, line ->
             guiGraphics.drawCenteredString(font, line, width / 2, height / 2 - 42 + index * 11, 0xAFC0D1)
         }
@@ -45,8 +63,8 @@ class EditorValidationScreen(
         val list = ConfigIssuesList(
             minecraft ?: Minecraft.getInstance(),
             listWidth,
-            (height - 83).coerceAtLeast(38),
-            49,
+            (height - 72).coerceAtLeast(38),
+            41,
             (listWidth - 18).coerceIn(100, 620),
             issues,
             menuText,
@@ -58,7 +76,9 @@ class EditorValidationScreen(
         )
         list.x = 8
         addRenderableWidget(list)
-        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(x, height - 27, w, 20).build())
+        val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
+        addFooterActions(back)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {

@@ -23,7 +23,7 @@ class ModEditorScreen(
         val left = (width - contentWidth) / 2
         val listWidth = (width - 16).coerceAtLeast(120)
         val list = ModEditorContentList(
-            minecraft ?: Minecraft.getInstance(), listWidth, (height - 83).coerceAtLeast(38), 49,
+            minecraft ?: Minecraft.getInstance(), listWidth, (height - 72).coerceAtLeast(38), 41,
             (listWidth - 18).coerceIn(100, 650), working,
             openDescriptions = { minecraft?.setScreen(DescriptionsEditorScreen(this, working)) },
             openLinks = { minecraft?.setScreen(LinksEditorScreen(this, working)) },
@@ -31,10 +31,9 @@ class ModEditorScreen(
         )
         list.x = 8
         addRenderableWidget(list)
-        addRenderableWidget(
-            TechButton.builder(tr("save_back")) { saveAndClose() }.style(TechButtonStyle.PRIMARY)
-                .bounds(left, height - 27, contentWidth, 20).build()
-        )
+        val save = TechButton.builder(tr("save_back")) { saveAndClose() }.style(TechButtonStyle.PRIMARY)
+            .bounds(0, 0, compactButtonWidth(tr("save_back"), 90), 18).build()
+        addFooterActions(save)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -59,9 +58,9 @@ private class ModEditorContentList(
     openDescriptions: () -> Unit,
     openLinks: () -> Unit,
     openMetadata: () -> Unit,
-) : ContainerObjectSelectionList<ModEditorContentList.EditorEntry>(minecraft, width, height, top, 42) {
+) : ContainerObjectSelectionList<ModEditorContentList.EditorEntry>(minecraft, width, height, top, 30) {
     init {
-        val fieldWidth = (rowWidth - 14).coerceAtLeast(20)
+        val fieldWidth = (rowWidth * .58).toInt().coerceAtLeast(20)
         addEntry(FieldEntry(tr("mod.name"), mod.name.orEmpty(), minecraft.font, fieldWidth) { mod.name = it.trim() })
         addEntry(FieldEntry(tr("mod.id"), mod.modId.orEmpty(), minecraft.font, fieldWidth) { mod.modId = it.trim() })
         addEntry(FieldEntry(tr("mod.version"), mod.versionRange.orEmpty(), minecraft.font, fieldWidth) { mod.versionRange = it.trim() })
@@ -118,9 +117,10 @@ private class ModEditorContentList(
             mouseX: Int, mouseY: Int, hovered: Boolean, partialTick: Float,
         ) {
             rowBackground(guiGraphics, top, left, width, height, hovered)
-            guiGraphics.drawString(font, label, left + 7, top + 4, 0x90A7BC, false)
-            field.x = left + 7
-            field.y = top + 15
+            val fieldX = left + width - field.width - 7
+            guiGraphics.drawString(font, font.plainSubstrByWidth(label.string, (fieldX - left - 14).coerceAtLeast(25)), left + 7, top + 10, EditorTheme.TEXT_MUTED, false)
+            field.x = fieldX
+            field.y = top + 4
             field.render(guiGraphics, mouseX, mouseY, partialTick)
         }
     }
@@ -145,15 +145,25 @@ private class ModEditorContentList(
         ) {
             rowBackground(guiGraphics, top, left, width, height, hovered)
             val gap = 5
-            val buttonWidth = ((width - 14 - gap * (buttons.size - 1)) / buttons.size).coerceAtLeast(24)
+            val available = width - 14
+            val font = Minecraft.getInstance().font
+            val desired = buttons.mapIndexed { buttonIndex, _ ->
+                (font.width(actions[buttonIndex].label()) + 18).coerceIn(58, 150)
+            }
+            val naturalTotal = desired.sum() + gap * (buttons.size - 1)
+            val compactWidth = if (naturalTotal <= available) null else
+                ((available - gap * (buttons.size - 1)) / buttons.size).coerceAtLeast(24)
+            var buttonX = left + 7
             buttons.forEachIndexed { buttonIndex, button ->
                 val action = actions[buttonIndex]
                 button.message = action.label()
                 button.setTechStyle(action.style())
-                button.x = left + 7 + buttonIndex * (buttonWidth + gap)
-                button.y = top + (height - 22) / 2
-                button.width = buttonWidth
+                button.x = buttonX
+                button.y = top + 5
+                button.width = compactWidth ?: desired[buttonIndex]
+                button.height = 18
                 button.render(guiGraphics, mouseX, mouseY, partialTick)
+                buttonX += button.width + gap
             }
         }
     }

@@ -23,9 +23,10 @@ class ModsEditorScreen(
         val mods = session.config.activeModEntries()
         val contentWidth = (width - 24).coerceAtMost(720)
         val left = (width - contentWidth) / 2
-        val sortWidth = (contentWidth / 3).coerceIn(100, 180)
-        val clearWidth = 24
-        searchField = StableEditBox(font, left, 49, contentWidth - sortWidth - clearWidth - 10, 20, tr("mods.search")).also {
+        val sortText = tr("mods.sort.${sortMode.name.lowercase()}")
+        val sortWidth = compactButtonWidth(sortText, 100, 180)
+        val clearWidth = 22
+        searchField = StableEditBox(font, left, 42, contentWidth - sortWidth - clearWidth - 8, 18, tr("mods.search")).also {
             it.value = searchText
             it.setMaxLength(256)
             it.setResponder { value ->
@@ -40,22 +41,22 @@ class ModsEditorScreen(
             searchField.value = ""
             setFocused(searchField)
         }.style(TechButtonStyle.GHOST)
-            .bounds(left + contentWidth - sortWidth - clearWidth - 6, 49, clearWidth, 20).build()
+            .bounds(left + contentWidth - sortWidth - clearWidth - 4, 42, clearWidth, 18).build()
         clearSearchButton.active = searchText.isNotEmpty()
         addRenderableWidget(clearSearchButton)
-        sortButton = TechButton.builder(tr("mods.sort.${sortMode.name.lowercase()}")) { cycleSort() }
-            .style(TechButtonStyle.GHOST).bounds(left + contentWidth - sortWidth, 49, sortWidth, 20).build()
+        sortButton = TechButton.builder(sortText) { cycleSort() }
+            .style(TechButtonStyle.GHOST).bounds(left + contentWidth - sortWidth, 42, sortWidth, 18).build()
         addRenderableWidget(sortButton)
         val listWidth = (width - 16).coerceAtLeast(120)
-        val listTop = 76
-        val listBottom = height - 86
+        val listTop = 65
+        val listBottom = height - 32
         modsList = StyledActionList(
             minecraft ?: net.minecraft.client.Minecraft.getInstance(),
             listWidth,
             (listBottom - listTop).coerceAtLeast(38),
             listTop,
             (listWidth - 18).coerceIn(100, 720),
-            42,
+            36,
             filteredMods(),
             titleOf = { it.second.displayName() },
             subtitleOf = { it.second.modId?.takeIf(String::isNotBlank) ?: it.second.filePattern.orEmpty() },
@@ -87,29 +88,22 @@ class ModsEditorScreen(
         modsList.x = 8
         addRenderableWidget(modsList)
 
-        val footerWidth = (width - 24).coerceAtMost(720)
-        val footerX = (width - footerWidth) / 2
-        val navigationY = height - 79
-        val half = (footerWidth - 6) / 2
-        addRenderableWidget(
-            TechButton.builder(tr("mods.add")) {
+        val add = TechButton.builder(tr("mods.add")) {
                 val mutable = session.config.activeModEntries().toMutableList()
                 mutable += RequiredMod(enabled = false, descriptions = linkedMapOf(), links = emptyList())
                 session.replaceMods(mutable)
                 minecraft?.setScreen(ModEditorScreen(this, session, mutable.lastIndex))
-            }.style(TechButtonStyle.PRIMARY).bounds(footerX, navigationY, half, 20).build()
-        )
-        addRenderableWidget(
-            TechButton.builder(tr("mods.import_local")) {
-                minecraft?.setScreen(LocalImportScreen(this, session))
-            }.bounds(footerX + half + 6, navigationY, half, 20).build()
-        )
+            }.style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(tr("mods.add")), 18).build()
+        val import = TechButton.builder(tr("mods.import_local")) {
+            minecraft?.setScreen(LocalImportScreen(this, session))
+        }.bounds(0, 0, compactButtonWidth(tr("mods.import_local"), 78), 18).build()
         val allEnabled = mods.isNotEmpty() && mods.all { it.enabled != false }
-        addRenderableWidget(
-            TechButton.builder(tr(if (allEnabled) "mods.disable_all" else "mods.enable_all")) { setAllEnabled(!allEnabled) }
-                .style(TechButtonStyle.SECONDARY).bounds(footerX, height - 53, half, 20).build()
-        )
-        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(footerX + half + 6, height - 53, half, 20).build())
+        val toggleText = tr(if (allEnabled) "mods.disable_all" else "mods.enable_all")
+        val toggle = TechButton.builder(toggleText) { setAllEnabled(!allEnabled) }
+            .style(TechButtonStyle.SECONDARY).bounds(0, 0, compactButtonWidth(toggleText, 76), 18).build()
+        val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
+        addFooterActions(back, toggle, import, add)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {

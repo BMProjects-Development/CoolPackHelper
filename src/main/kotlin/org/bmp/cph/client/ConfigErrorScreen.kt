@@ -29,9 +29,8 @@ class ConfigErrorScreen(
     private val editorRoot by lazy { EditorHubScreen(this, editorSession) }
 
     override fun init() {
-        val wide = width >= 560
         val listTop = 75
-        val footerTop = height - if (wide) 34 else 58
+        val footerTop = height - 30
         val listWidth = (width - 16).coerceAtLeast(120)
         val list = ConfigIssuesList(
             minecraft ?: Minecraft.getInstance(),
@@ -50,7 +49,7 @@ class ConfigErrorScreen(
         )
         list.x = 8
         addRenderableWidget(list)
-        addFooterButtons(wide)
+        addFooterButtons()
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -61,32 +60,19 @@ class ConfigErrorScreen(
         }
     }
 
-    private fun addFooterButtons(wide: Boolean) {
-        if (wide) {
-            val totalWidth = (width - 24).coerceAtMost(720)
-            val buttonWidth = (totalWidth - 12) / 3
-            val startX = (width - totalWidth) / 2
-            addRenderableWidget(button(text.recheckButton, startX, height - 27, buttonWidth, ::recheck))
-            addRenderableWidget(button(text.openConfigFolderButton, startX + buttonWidth + 6, height - 27, buttonWidth, ::openConfigFolder, TechButtonStyle.GHOST))
-            addRenderableWidget(button(text.continueButton, startX + (buttonWidth + 6) * 2, height - 27, buttonWidth, { onClose() }, TechButtonStyle.PRIMARY))
-        } else {
-            val totalWidth = (width - 20).coerceAtMost(400)
-            val half = (totalWidth - 6) / 2
-            val startX = (width - totalWidth) / 2
-            addRenderableWidget(button(text.recheckButton, startX, height - 51, half, ::recheck))
-            addRenderableWidget(button(text.openConfigFolderButton, startX + half + 6, height - 51, half, ::openConfigFolder))
-            addRenderableWidget(button(text.continueButton, startX, height - 27, totalWidth, { onClose() }, TechButtonStyle.PRIMARY))
-        }
+    private fun addFooterButtons() {
+        addFooterActions(
+            button(text.continueButton, { onClose() }, TechButtonStyle.GHOST),
+            button(text.openConfigFolderButton, ::openConfigFolder, TechButtonStyle.GHOST),
+            button(text.recheckButton, ::recheck, TechButtonStyle.PRIMARY),
+        )
     }
 
-    private fun button(
-        label: String,
-        x: Int,
-        y: Int,
-        width: Int,
-        action: () -> Unit,
-        style: TechButtonStyle = TechButtonStyle.SECONDARY,
-    ): TechButton = TechButton.builder(Component.literal(label)) { action() }.style(style).bounds(x, y, width, 20).build()
+    private fun button(label: String, action: () -> Unit, style: TechButtonStyle = TechButtonStyle.SECONDARY): TechButton {
+        val message = Component.literal(label)
+        return TechButton.builder(message) { action() }.style(style)
+            .bounds(0, 0, compactButtonWidth(message, 62), 18).build()
+    }
 
     private fun openConfigFolder() {
         try {

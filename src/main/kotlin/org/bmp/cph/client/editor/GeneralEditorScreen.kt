@@ -18,22 +18,27 @@ class GeneralEditorScreen(
     private lateinit var fixedLanguage: EditBox
     private lateinit var fallbackLanguage: EditBox
     private var labels = emptyList<Pair<EditBox, String>>()
+    private var propertyLeft = 0
+    private var propertyWidth = 0
 
     override fun init() {
         val config = session.config
         val pack = config.pack ?: PackInfo().also { config.pack = it }
         val language = session.ensureMenu().language ?: LanguageConfig().also { session.ensureMenu().language = it }
-        val contentWidth = (width - 28).coerceAtMost(620)
+        val contentWidth = (width - 20).coerceAtMost(590)
         val left = (width - contentWidth) / 2
-        val twoColumns = width >= 480 || height < 310
-        val fieldWidth = if (twoColumns) (contentWidth - 10) / 2 else contentWidth
-        val rightColumn = left + contentWidth - fieldWidth
+        val labelWidth = (contentWidth * .38).toInt().coerceIn(112, 185)
+        val fieldX = left + labelWidth
+        val fieldWidth = (contentWidth - labelWidth - 6).coerceAtLeast(50)
+        val firstY = 45
+        propertyLeft = left
+        propertyWidth = contentWidth
 
-        packId = field(left, 62, fieldWidth, pack.id.orEmpty())
-        packName = field(if (twoColumns) rightColumn else left, if (twoColumns) 62 else 101, fieldWidth, pack.name.orEmpty())
-        packVersion = field(left, if (twoColumns) 101 else 140, fieldWidth, pack.version.orEmpty())
-        fixedLanguage = field(if (twoColumns) rightColumn else left, if (twoColumns) 101 else 179, fieldWidth, language.fixedLanguage.orEmpty())
-        fallbackLanguage = field(left, if (twoColumns) 140 else 218, fieldWidth, language.fallbackLanguage.orEmpty())
+        packId = field(fieldX, firstY + 3, fieldWidth, pack.id.orEmpty())
+        packName = field(fieldX, firstY + 31, fieldWidth, pack.name.orEmpty())
+        packVersion = field(fieldX, firstY + 59, fieldWidth, pack.version.orEmpty())
+        fixedLanguage = field(fieldX, firstY + 87, fieldWidth, language.fixedLanguage.orEmpty())
+        fallbackLanguage = field(fieldX, firstY + 115, fieldWidth, language.fallbackLanguage.orEmpty())
         labels = listOf(
             packId to "general.pack_id",
             packName to "general.pack_name",
@@ -43,33 +48,43 @@ class GeneralEditorScreen(
         )
         fixedLanguage.active = language.mode.equals(LanguageMode.FIXED.name, true)
 
-        val buttonsY = if (twoColumns) 180 else 257
-        val half = (contentWidth - 8) / 2
+        val buttonsY = firstY + 151
+        val policyText = tr("general.policy", tr("policy.${config.resolvedShowPolicy().name.lowercase()}"))
+        val languageText = tr("general.language_mode", tr("language.${languageMode().name.lowercase()}"))
+        var policyWidth = compactButtonWidth(policyText, 120, 245)
+        var languageWidth = compactButtonWidth(languageText, 120, 220)
+        if (policyWidth + languageWidth + 6 > contentWidth) {
+            policyWidth = (contentWidth - 6) / 2
+            languageWidth = contentWidth - policyWidth - 6
+        }
         addRenderableWidget(
-            TechButton.builder(tr("general.policy", tr("policy.${config.resolvedShowPolicy().name.lowercase()}"))) {
+            TechButton.builder(policyText) {
                 commit()
                 val current = config.resolvedShowPolicy()
                 config.showPolicy = ShowPolicy.entries[(current.ordinal + 1) % ShowPolicy.entries.size].name
                 rebuildWidgets()
-            }.bounds(left, buttonsY, half, 20).build()
+            }.style(TechButtonStyle.SECONDARY).bounds(left, buttonsY, policyWidth, 18).build()
         )
         addRenderableWidget(
-            TechButton.builder(tr("general.language_mode", tr("language.${languageMode().name.lowercase()}"))) {
+            TechButton.builder(languageText) {
                 commit()
                 language.mode = if (languageMode() == LanguageMode.GAME) LanguageMode.FIXED.name else LanguageMode.GAME.name
                 rebuildWidgets()
-            }.bounds(left + half + 8, buttonsY, half, 20).build()
+            }.style(TechButtonStyle.SECONDARY)
+                .bounds(left + policyWidth + 6, buttonsY, languageWidth, 18).build()
         )
-        addRenderableWidget(
-            TechButton.builder(tr("save_back")) { onClose() }.style(TechButtonStyle.PRIMARY)
-                .bounds(left, height - 27, contentWidth, 20).build()
-        )
+        val back = TechButton.builder(tr("save_back")) { onClose() }.style(TechButtonStyle.PRIMARY)
+            .bounds(0, 0, compactButtonWidth(tr("save_back"), 90), 18).build()
+        addFooterActions(back)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         drawHeader(guiGraphics, tr("general.subtitle"))
+        labels.forEachIndexed { index, _ ->
+            drawEditorRow(guiGraphics, propertyLeft, 45 + index * 28, propertyWidth, 27, false)
+        }
         labels.forEach { (field, key) ->
-            guiGraphics.drawString(font, tr(key), field.x, field.y - 11, 0x90A7BC, false)
+            guiGraphics.drawString(font, font.plainSubstrByWidth(tr(key).string, (field.x - propertyLeft - 14).coerceAtLeast(30)), propertyLeft + 8, field.y + 6, EditorTheme.TEXT_MUTED, false)
         }
     }
 

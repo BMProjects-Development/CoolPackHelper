@@ -34,19 +34,22 @@ object ClientBootstrap {
     private fun onScreenInitialized(event: ScreenEvent.Init.Post) {
         val screen = event.screen
         if (screen !is ModListScreen) return
-        val x = (screen.width / 3 + 12).coerceAtLeast(112)
-        val totalWidth = (screen.width - x - 8).coerceAtMost(430)
-        val buttonWidth = (totalWidth - 6) / 2
+        val font = Minecraft.getInstance().font
+        val requirementsText = tr("requirements")
+        val editorText = tr("title")
+        val requirementsWidth = (font.width(requirementsText) + 18).coerceIn(76, 150)
+        val editorWidth = (font.width(editorText) + 18).coerceIn(90, 170)
+        val x = (screen.width - requirementsWidth - editorWidth - 14).coerceAtLeast(8)
         val y = screen.height - 52
         event.addListener(
-            TechButton.builder(tr("requirements")) {
+            TechButton.builder(requirementsText) {
                 Minecraft.getInstance().setScreen(createRequirementsScreen(screen))
-            }.style(TechButtonStyle.GHOST).bounds(x, y, buttonWidth, 20).build()
+            }.style(TechButtonStyle.GHOST).bounds(x, y, requirementsWidth, 18).build()
         )
         event.addListener(
-            TechButton.builder(tr("title")) {
+            TechButton.builder(editorText) {
                 Minecraft.getInstance().setScreen(EditorHubScreen(screen))
-            }.style(TechButtonStyle.PRIMARY).bounds(x + buttonWidth + 6, y, buttonWidth, 20).build()
+            }.style(TechButtonStyle.PRIMARY).bounds(x + requirementsWidth + 6, y, editorWidth, 18).build()
         )
     }
 

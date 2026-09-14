@@ -5,7 +5,6 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.components.ContainerObjectSelectionList
 import net.minecraft.client.gui.components.EditBox
-import net.minecraft.client.gui.components.MultiLineEditBox
 import net.minecraft.client.gui.components.toasts.SystemToast
 import net.minecraft.client.gui.components.events.GuiEventListener
 import net.minecraft.client.gui.narration.NarratableEntry
@@ -29,10 +28,10 @@ class LinksEditorScreen(
         val list = StyledActionList(
             minecraft ?: net.minecraft.client.Minecraft.getInstance(),
             listWidth,
-            (height - 83).coerceAtLeast(38),
-            49,
+            (height - 72).coerceAtLeast(38),
+            41,
             (listWidth - 18).coerceIn(100, 650),
-            40,
+            36,
             indexedLinks,
             titleOf = { it.second.displayLabel() },
             subtitleOf = { it.second.downloadUrl?.takeIf(String::isNotBlank) ?: it.second.url.orEmpty() },
@@ -53,14 +52,13 @@ class LinksEditorScreen(
         )
         list.x = 8
         addRenderableWidget(list)
-        val half = (contentWidth - 6) / 2
-        addRenderableWidget(
-            TechButton.builder(tr("links.add")) {
+        val add = TechButton.builder(tr("links.add")) {
                 mod.links = mod.links.orEmpty() + DownloadLink()
                 minecraft?.setScreen(LinkEntryEditorScreen(this, mod, mod.links.orEmpty().lastIndex, onChanged))
-            }.style(TechButtonStyle.PRIMARY).bounds(left, height - 27, half, 20).build()
-        )
-        addRenderableWidget(TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST).bounds(left + half + 6, height - 27, half, 20).build())
+            }.style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(tr("links.add")), 18).build()
+        val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
+        addFooterActions(back, add)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -86,35 +84,33 @@ class LinkEntryEditorScreen(
     override fun init() {
         val w = (width - 30).coerceAtMost(600)
         val x = (width - w) / 2
-        val metadataWidth = (w * 0.38).toInt().coerceAtLeast(100)
-        val typeWidth = w - metadataWidth - 6
+        val typeText = tr("link.type", working.resolvedType().name)
+        val metadataText = tr(if (metadataLoading) "link.metadata.loading" else "link.metadata")
+        val typeWidth = compactButtonWidth(typeText, 120, 240)
+        val metadataWidth = compactButtonWidth(metadataText, 92, 180)
         addRenderableWidget(
-            TechButton.builder(tr("link.type", working.resolvedType().name)) { cycleType() }
-                .style(TechButtonStyle.SECONDARY).bounds(x, 49, typeWidth, 20).build()
+            TechButton.builder(typeText) { cycleType() }
+                .style(TechButtonStyle.SECONDARY).bounds(x, 42, typeWidth, 18).build()
         )
-        val metadata = TechButton.builder(tr(if (metadataLoading) "link.metadata.loading" else "link.metadata")) { loadMetadata() }
-            .style(TechButtonStyle.PRIMARY).bounds(x + typeWidth + 6, 49, metadataWidth, 20).build()
+        val metadata = TechButton.builder(metadataText) { loadMetadata() }
+            .style(TechButtonStyle.SECONDARY).bounds(x + typeWidth + 5, 42, metadataWidth, 18).build()
         metadata.active = !metadataLoading && working.resolvedType() in setOf(DownloadSourceType.MODRINTH, DownloadSourceType.CURSEFORGE)
         addRenderableWidget(metadata)
         val listWidth = (width - 16).coerceAtLeast(120)
         val list = DownloadSourceFieldsList(
-            minecraft ?: Minecraft.getInstance(), listWidth, (height - 116).coerceAtLeast(38), 78,
+            minecraft ?: Minecraft.getInstance(), listWidth, (height - 97).coerceAtLeast(38), 65,
             (listWidth - 18).coerceIn(100, 600), working, showAdvanced,
         )
         list.x = 8
         addRenderableWidget(list)
-        val advancedWidth = (w * 0.38).toInt().coerceAtLeast(110)
-        val saveWidth = w - advancedWidth - 6
-        addRenderableWidget(
-            TechButton.builder(tr(if (showAdvanced) "link.advanced.hide" else "link.advanced.show")) {
+        val advancedText = tr(if (showAdvanced) "link.advanced.hide" else "link.advanced.show")
+        val advanced = TechButton.builder(advancedText) {
                 showAdvanced = !showAdvanced
                 rebuildWidgets()
-            }.style(TechButtonStyle.GHOST).bounds(x, height - 27, advancedWidth, 20).build()
-        )
-        addRenderableWidget(
-            TechButton.builder(tr("save_back")) { save() }.style(TechButtonStyle.PRIMARY)
-                .bounds(x + advancedWidth + 6, height - 27, saveWidth, 20).build()
-        )
+            }.style(TechButtonStyle.GHOST).bounds(0, 0, compactButtonWidth(advancedText, 90), 18).build()
+        val save = TechButton.builder(tr("save_back")) { save() }.style(TechButtonStyle.PRIMARY)
+            .bounds(0, 0, compactButtonWidth(tr("save_back"), 90), 18).build()
+        addFooterActions(advanced, save)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -183,7 +179,7 @@ private class DownloadSourceFieldsList(
     private val rowWidth: Int,
     link: DownloadLink,
     advanced: Boolean,
-) : ContainerObjectSelectionList<DownloadSourceFieldsList.FieldEntry>(minecraft, width, height, top, 54) {
+) : ContainerObjectSelectionList<DownloadSourceFieldsList.FieldEntry>(minecraft, width, height, top, 40) {
     data class Field(
         val key: String,
         val label: Component,
@@ -215,7 +211,7 @@ private class DownloadSourceFieldsList(
             DownloadSourceType.PAGE -> setOf("label", "url")
         }
         fields.filter { advanced || it.key in basic }.forEach {
-            addEntry(FieldEntry(it, minecraft.font, (rowWidth - 14).coerceAtLeast(20)))
+            addEntry(FieldEntry(it, minecraft.font, (rowWidth * .62).toInt().coerceAtLeast(20)))
         }
     }
 
@@ -239,15 +235,17 @@ private class DownloadSourceFieldsList(
             mouseX: Int, mouseY: Int, hovered: Boolean, partialTick: Float,
         ) {
             drawEditorRow(guiGraphics, left, top, width, height, hovered)
-            guiGraphics.drawString(font, label, left + 7, top + 4, 0x90A7BC, false)
+            val fieldWidth = singleLineField?.width ?: wrappedField?.width ?: 0
+            val fieldX = left + width - fieldWidth - 7
+            guiGraphics.drawString(font, font.plainSubstrByWidth(label.string, (fieldX - left - 14).coerceAtLeast(25)), left + 7, top + 15, EditorTheme.TEXT_MUTED, false)
             singleLineField?.let {
-                it.x = left + 7
-                it.y = top + 15
+                it.x = fieldX
+                it.y = top + 10
                 it.render(guiGraphics, mouseX, mouseY, partialTick)
             }
             wrappedField?.let {
-                it.x = left + 7
-                it.y = top + 15
+                it.x = fieldX
+                it.y = top + 4
                 it.render(guiGraphics, mouseX, mouseY, partialTick)
             }
         }
