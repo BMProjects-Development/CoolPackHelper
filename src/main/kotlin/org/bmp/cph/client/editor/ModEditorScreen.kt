@@ -48,7 +48,7 @@ class ModEditorScreen(
     }
 }
 
-private class ModEditorContentList(
+internal class ModEditorContentList(
     minecraft: Minecraft,
     width: Int,
     height: Int,
@@ -58,28 +58,39 @@ private class ModEditorContentList(
     openDescriptions: () -> Unit,
     openLinks: () -> Unit,
     openMetadata: () -> Unit,
+    private val onChanged: () -> Unit = {},
 ) : ContainerObjectSelectionList<ModEditorContentList.EditorEntry>(minecraft, width, height, top, 30) {
     init {
         val fieldWidth = (rowWidth * .58).toInt().coerceAtLeast(20)
-        addEntry(FieldEntry(tr("mod.name"), mod.name.orEmpty(), minecraft.font, fieldWidth) { mod.name = it.trim() })
-        addEntry(FieldEntry(tr("mod.id"), mod.modId.orEmpty(), minecraft.font, fieldWidth) { mod.modId = it.trim() })
-        addEntry(FieldEntry(tr("mod.version"), mod.versionRange.orEmpty(), minecraft.font, fieldWidth) { mod.versionRange = it.trim() })
-        addEntry(FieldEntry(tr("mod.pattern"), mod.filePattern.orEmpty(), minecraft.font, fieldWidth) { mod.filePattern = it.trim() })
+        addEntry(FieldEntry(tr("mod.name"), mod.name.orEmpty(), minecraft.font, fieldWidth) { mod.name = it.trim(); onChanged() })
+        addEntry(FieldEntry(tr("mod.id"), mod.modId.orEmpty(), minecraft.font, fieldWidth) { mod.modId = it.trim(); onChanged() })
+        addEntry(FieldEntry(tr("mod.version"), mod.versionRange.orEmpty(), minecraft.font, fieldWidth) { mod.versionRange = it.trim(); onChanged() })
+        addEntry(FieldEntry(tr("mod.pattern"), mod.filePattern.orEmpty(), minecraft.font, fieldWidth) { mod.filePattern = it.trim(); onChanged() })
         addEntry(
             ActionEntry(
                 listOf(
                     Action(
                         label = { tr(if (mod.enabled == false) "mod.disabled" else "mod.enabled") },
                         style = { if (mod.enabled == false) TechButtonStyle.GHOST else TechButtonStyle.PRIMARY },
-                    ) { mod.enabled = mod.enabled == false },
+                    ) { mod.enabled = mod.enabled == false; onChanged() },
                     Action(label = { tr("mod.category", tr("category.${mod.resolvedCategory().name.lowercase()}")) }) {
                         mod.category = if (mod.resolvedCategory() == ModCategory.REQUIRED) {
                             ModCategory.RECOMMENDED.name
                         } else ModCategory.REQUIRED.name
+                        onChanged()
                     },
                 )
             )
         )
+        mod.links.orEmpty().forEach { source ->
+            val editsDownloadUrl = !source.downloadUrl.isNullOrBlank()
+            val currentUrl = if (editsDownloadUrl) source.downloadUrl.orEmpty() else source.url.orEmpty()
+            addEntry(FieldEntry(tr("mod.link", source.displayLabel()), currentUrl, minecraft.font, fieldWidth) { value ->
+                val cleaned = value.trim().takeIf(String::isNotBlank)
+                if (editsDownloadUrl) source.downloadUrl = cleaned else source.url = cleaned
+                onChanged()
+            })
+        }
         addEntry(
             ActionEntry(
                 listOf(

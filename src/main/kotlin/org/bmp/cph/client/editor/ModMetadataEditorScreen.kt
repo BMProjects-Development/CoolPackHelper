@@ -18,7 +18,7 @@ import org.bmp.cph.config.DownloadLink
 import org.bmp.cph.config.DownloadSourceType
 import org.bmp.cph.config.RequiredMod
 
-class ModMetadataEditorScreen(parent: Screen, private val mod: RequiredMod) :
+class ModMetadataEditorScreen(parent: Screen, private val mod: RequiredMod, private val onChanged: () -> Unit = {}) :
     EditorScreenBase(tr("metadata.title"), parent) {
     override fun init() {
         val contentWidth = (width - 24).coerceAtMost(650)
@@ -26,7 +26,7 @@ class ModMetadataEditorScreen(parent: Screen, private val mod: RequiredMod) :
         val listWidth = (width - 16).coerceAtLeast(120)
         val list = MetadataFieldsList(
             minecraft ?: Minecraft.getInstance(), listWidth, (height - 72).coerceAtLeast(38), 41,
-            (listWidth - 18).coerceIn(100, 650), mod,
+            (listWidth - 18).coerceIn(100, 650), mod, onChanged,
         )
         list.x = 8
         addRenderableWidget(list)
@@ -42,7 +42,7 @@ class ModMetadataEditorScreen(parent: Screen, private val mod: RequiredMod) :
     private fun importButton(type: DownloadSourceType): TechButton {
         val text = tr("metadata.import.${type.name.lowercase()}")
         return TechButton.builder(text) {
-            minecraft?.setScreen(MetadataImportScreen(this, mod, type))
+            minecraft?.setScreen(MetadataImportScreen(this, mod, type, onChanged))
         }.style(TechButtonStyle.SECONDARY).bounds(0, 0, compactButtonWidth(text, 90), 18).build()
     }
 }
@@ -51,6 +51,7 @@ private class MetadataImportScreen(
     parent: Screen,
     private val mod: RequiredMod,
     private val type: DownloadSourceType,
+    private val onChanged: () -> Unit,
 ) : EditorScreenBase(tr("metadata.import.title", type.name), parent) {
     private lateinit var projectField: MultiLineEditBox
     private var keyField: EditBox? = null
@@ -127,6 +128,7 @@ private class MetadataImportScreen(
                     val links = mod.links.orEmpty().toMutableList()
                     if (existingIndex in links.indices) links[existingIndex] = source else links += source
                     mod.links = links
+                    onChanged()
                     SystemToast.add(
                         Minecraft.getInstance().toasts, SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
                         tr("link.metadata.done"), Component.literal(metadata.name),
@@ -152,17 +154,19 @@ private class MetadataFieldsList(
     top: Int,
     private val rowWidth: Int,
     mod: RequiredMod,
+    onChanged: () -> Unit,
 ) : ContainerObjectSelectionList<MetadataFieldsList.FieldEntry>(minecraft, width, height, top, 40) {
     data class Field(val label: Component, val value: () -> String, val wraps: Boolean = false, val changed: (String) -> Unit)
 
     init {
         listOf(
-            Field(tr("metadata.icon"), { mod.iconUrl.orEmpty() }, wraps = true) { mod.iconUrl = it.singleLine().clean() },
-            Field(tr("metadata.project"), { mod.projectUrl.orEmpty() }, wraps = true) { mod.projectUrl = it.singleLine().clean() },
+            Field(tr("metadata.icon"), { mod.iconUrl.orEmpty() }, wraps = true) { mod.iconUrl = it.singleLine().clean(); onChanged() },
+            Field(tr("metadata.project"), { mod.projectUrl.orEmpty() }, wraps = true) { mod.projectUrl = it.singleLine().clean(); onChanged() },
             Field(tr("metadata.authors"), { mod.authors.orEmpty().joinToString(", ") }) {
                 mod.authors = it.split(',').map(String::trim).filter(String::isNotBlank).distinct().take(32)
+                onChanged()
             },
-            Field(tr("metadata.license"), { mod.license.orEmpty() }) { mod.license = it.clean() },
+            Field(tr("metadata.license"), { mod.license.orEmpty() }) { mod.license = it.clean(); onChanged() },
         ).forEach { addEntry(FieldEntry(it, minecraft.font, (rowWidth * .62).toInt().coerceAtLeast(20))) }
     }
 

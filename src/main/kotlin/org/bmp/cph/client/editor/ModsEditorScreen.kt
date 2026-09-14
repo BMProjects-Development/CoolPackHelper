@@ -18,15 +18,23 @@ class ModsEditorScreen(
     private lateinit var clearSearchButton: TechButton
     private lateinit var sortButton: TechButton
     private lateinit var modsList: StyledActionList<Pair<Int, RequiredMod>>
+    private var selectedIndex: Int? = null
+    private var inspectorLeft = 0
+    private var twoPane = false
 
     override fun init() {
         val mods = session.config.activeModEntries()
-        val contentWidth = (width - 24).coerceAtMost(720)
-        val left = (width - contentWidth) / 2
+        selectedIndex = selectedIndex?.takeIf { it in mods.indices } ?: mods.indices.firstOrNull()
+        twoPane = width >= 620
+        val outerGap = 8
+        val paneGap = 7
+        val availableWidth = (width - outerGap * 2).coerceAtLeast(120)
+        val listPaneWidth = if (twoPane) (width * .36).toInt().coerceIn(230, 320) else availableWidth
+        val left = outerGap
         val sortText = tr("mods.sort.${sortMode.name.lowercase()}")
-        val sortWidth = compactButtonWidth(sortText, 100, 180)
+        val sortWidth = compactButtonWidth(sortText, 92, if (twoPane) 126 else 180)
         val clearWidth = 22
-        searchField = StableEditBox(font, left, 42, contentWidth - sortWidth - clearWidth - 8, 18, tr("mods.search")).also {
+        searchField = StableEditBox(font, left, 42, (listPaneWidth - sortWidth - clearWidth - 8).coerceAtLeast(48), 18, tr("mods.search")).also {
             it.value = searchText
             it.setMaxLength(256)
             it.setResponder { value ->
@@ -41,13 +49,13 @@ class ModsEditorScreen(
             searchField.value = ""
             setFocused(searchField)
         }.style(TechButtonStyle.GHOST)
-            .bounds(left + contentWidth - sortWidth - clearWidth - 4, 42, clearWidth, 18).build()
+            .bounds(left + listPaneWidth - sortWidth - clearWidth - 4, 42, clearWidth, 18).build()
         clearSearchButton.active = searchText.isNotEmpty()
         addRenderableWidget(clearSearchButton)
         sortButton = TechButton.builder(sortText) { cycleSort() }
-            .style(TechButtonStyle.GHOST).bounds(left + contentWidth - sortWidth, 42, sortWidth, 18).build()
+            .style(TechButtonStyle.GHOST).bounds(left + listPaneWidth - sortWidth, 42, sortWidth, 18).build()
         addRenderableWidget(sortButton)
-        val listWidth = (width - 16).coerceAtLeast(120)
+        val listWidth = listPaneWidth
         val listTop = 65
         val listBottom = height - 32
         modsList = StyledActionList(
@@ -55,13 +63,14 @@ class ModsEditorScreen(
             listWidth,
             (listBottom - listTop).coerceAtLeast(38),
             listTop,
-            (listWidth - 18).coerceIn(100, 720),
+            (listWidth - 10).coerceAtLeast(100),
             36,
             filteredMods(),
             titleOf = { it.second.displayName() },
             subtitleOf = { it.second.modId?.takeIf(String::isNotBlank) ?: it.second.filePattern.orEmpty() },
-            accentOf = { (_, mod) ->
+            accentOf = { (index, mod) ->
                 when {
+                    twoPane && index == selectedIndex -> EditorTheme.ACCENT
                     mod.enabled == false -> 0xFF647386.toInt()
                     mod.resolvedCategory() == org.bmp.cph.config.ModCategory.REQUIRED -> 0xFFE46A6A.toInt()
                     else -> 0xFFE0B85B.toInt()
@@ -70,9 +79,6 @@ class ModsEditorScreen(
             iconOf = { it.second.iconUrl },
             actionsOf = { (index, _) ->
                 listOf(
-                    RowAction(label = { tr("mods.edit") }, width = 58) {
-                        minecraft?.setScreen(ModEditorScreen(this, session, index))
-                    },
                     RowAction(label = { tr("mods.duplicate") }, width = 48, style = { TechButtonStyle.GHOST }) {
                         duplicate(index)
                     },
@@ -80,19 +86,54 @@ class ModsEditorScreen(
                         val mutable = session.config.activeModEntries().toMutableList()
                         if (index in mutable.indices) mutable.removeAt(index)
                         session.replaceMods(mutable)
+                        selectedIndex = when {
+                            mutable.isEmpty() -> null
+                            index >= mutable.size -> mutable.lastIndex
+                            else -> index
+                        }
                         rebuildWidgets()
                     },
                 )
             },
+            onRowClick = { (index, _) ->
+                if (twoPane) {
+                    selectedIndex = index
+                    rebuildWidgets()
+                } else {
+                    minecraft?.setScreen(ModEditorScreen(this, session, index))
+                }
+            },
         )
-        modsList.x = 8
+        modsList.x = left
         addRenderableWidget(modsList)
+
+        if (twoPane) {
+            inspectorLeft = left + listPaneWidth + paneGap
+            val inspectorWidth = (width - inspectorLeft - outerGap).coerceAtLeast(180)
+            mods.getOrNull(selectedIndex ?: -1)?.let { selected ->
+                val inspector = ModEditorContentList(
+                    minecraft ?: net.minecraft.client.Minecraft.getInstance(),
+                    inspectorWidth,
+                    (height - 91).coerceAtLeast(38),
+                    59,
+                    (inspectorWidth - 10).coerceAtLeast(100),
+                    selected,
+                    openDescriptions = { minecraft?.setScreen(DescriptionsEditorScreen(this, selected, session::markDirty)) },
+                    openLinks = { minecraft?.setScreen(LinksEditorScreen(this, selected, session::markDirty)) },
+                    openMetadata = { minecraft?.setScreen(ModMetadataEditorScreen(this, selected, session::markDirty)) },
+                    onChanged = session::markDirty,
+                )
+                inspector.x = inspectorLeft
+                addRenderableWidget(inspector)
+            }
+        }
 
         val add = TechButton.builder(tr("mods.add")) {
                 val mutable = session.config.activeModEntries().toMutableList()
                 mutable += RequiredMod(enabled = false, descriptions = linkedMapOf(), links = emptyList())
                 session.replaceMods(mutable)
-                minecraft?.setScreen(ModEditorScreen(this, session, mutable.lastIndex))
+                selectedIndex = mutable.lastIndex
+                if (twoPane) rebuildWidgets() else minecraft?.setScreen(ModEditorScreen(this, session, mutable.lastIndex))
             }.style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(tr("mods.add")), 18).build()
         val import = TechButton.builder(tr("mods.import_local")) {
             minecraft?.setScreen(LocalImportScreen(this, session))
@@ -110,6 +151,19 @@ class ModsEditorScreen(
         val total = session.config.activeModEntries().size
         val shown = visibleCount()
         drawHeader(guiGraphics, if (searchText.isBlank()) tr("mods.count", total) else tr("mods.filtered_count", shown, total))
+        if (twoPane) {
+            guiGraphics.fill(inspectorLeft - 4, 40, inspectorLeft - 3, height - 32, EditorTheme.BORDER_SOFT)
+            val selected = session.config.activeModEntries().getOrNull(selectedIndex ?: -1)
+            val inspectorTitle = selected?.displayName() ?: tr("mods.select").string
+            guiGraphics.drawString(
+                font,
+                font.plainSubstrByWidth(inspectorTitle, (width - inspectorLeft - 18).coerceAtLeast(40)),
+                inspectorLeft + 5,
+                45,
+                EditorTheme.TEXT,
+                false,
+            )
+        }
         if (session.config.activeModEntries().isEmpty()) guiGraphics.drawCenteredString(font, tr("mods.empty"), width / 2, height / 2, 0x91A4B8)
     }
 
@@ -133,6 +187,7 @@ class ModsEditorScreen(
         )
         mutable.add(index + 1, copy)
         session.replaceMods(mutable)
+        selectedIndex = index + 1
         rebuildWidgets()
     }
 

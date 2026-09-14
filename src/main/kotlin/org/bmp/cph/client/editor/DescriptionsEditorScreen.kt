@@ -10,6 +10,7 @@ import org.bmp.cph.config.RequiredMod
 class DescriptionsEditorScreen(
     parent: Screen,
     private val mod: RequiredMod,
+    private val onChanged: () -> Unit = {},
 ) : EditorScreenBase(tr("descriptions.title", mod.displayName()), parent) {
     override fun init() {
         val entries = mod.descriptions.orEmpty().entries.toList()
@@ -29,10 +30,11 @@ class DescriptionsEditorScreen(
             accentOf = { 0xFF62D9FF.toInt() },
             actionsOf = { entry -> listOf(
                 RowAction(label = { tr("mods.edit") }, width = 58) {
-                    minecraft?.setScreen(DescriptionEntryEditorScreen(this, mod, entry.key))
+                    minecraft?.setScreen(DescriptionEntryEditorScreen(this, mod, entry.key, onChanged))
                 },
                 RowAction(label = { Component.literal("×") }, width = 25, style = { TechButtonStyle.DANGER }) {
                     mod.descriptions = mod.descriptions.orEmpty().toMutableMap().also { it.remove(entry.key) }
+                    onChanged()
                     rebuildWidgets()
                 },
             ) },
@@ -40,7 +42,7 @@ class DescriptionsEditorScreen(
         list.x = 8
         addRenderableWidget(list)
         val add = TechButton.builder(tr("descriptions.add")) {
-                minecraft?.setScreen(DescriptionEntryEditorScreen(this, mod, null))
+                minecraft?.setScreen(DescriptionEntryEditorScreen(this, mod, null, onChanged))
             }.style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(tr("descriptions.add")), 18).build()
         val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
             .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
@@ -61,6 +63,7 @@ class DescriptionEntryEditorScreen(
     parent: Screen,
     private val mod: RequiredMod,
     private val originalLocale: String?,
+    private val onChanged: () -> Unit = {},
 ) : EditorScreenBase(tr("description.title"), parent) {
     private lateinit var localeField: EditBox
     private lateinit var textField: MultiLineEditBox
@@ -94,6 +97,7 @@ class DescriptionEntryEditorScreen(
             originalLocale?.let(mutable::remove)
             mutable[locale] = textField.value
             mod.descriptions = mutable
+            onChanged()
         }
         onClose()
     }
