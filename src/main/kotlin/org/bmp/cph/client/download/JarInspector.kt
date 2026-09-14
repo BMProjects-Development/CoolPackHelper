@@ -1,5 +1,6 @@
 package org.bmp.cph.client.download
 
+import org.bmp.cph.client.cphMessage
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 import java.util.zip.ZipFile
@@ -15,15 +16,15 @@ object JarInspector {
 
     fun inspect(path: Path): InspectedJar {
         ZipFile(path.toFile()).use { zip ->
-            require(zip.size() in 1..MAX_ENTRIES) { "The JAR has an invalid number of entries" }
+            require(zip.size() in 1..MAX_ENTRIES) { cphMessage("cph.download.error.jar_entries") }
             zip.entries().asSequence().forEach { entry ->
-                require(!entry.name.startsWith('/') && entry.name.split('/').none { it == ".." }) { "The JAR contains an unsafe entry path" }
+                require(!entry.name.startsWith('/') && entry.name.split('/').none { it == ".." }) { cphMessage("cph.download.error.jar_path") }
             }
             val metadata = zip.getEntry("META-INF/neoforge.mods.toml") ?: zip.getEntry("META-INF/mods.toml")
-                ?: error("The file has no NeoForge mod metadata")
-            require(metadata.size in 0..MAX_METADATA_BYTES.toLong() || metadata.size == -1L) { "The NeoForge metadata is too large" }
+                ?: error(cphMessage("cph.download.error.jar_metadata_missing"))
+            require(metadata.size in 0..MAX_METADATA_BYTES.toLong() || metadata.size == -1L) { cphMessage("cph.download.error.jar_metadata_large") }
             val metadataBytes = zip.getInputStream(metadata).use { it.readNBytes(MAX_METADATA_BYTES + 1) }
-            require(metadataBytes.size <= MAX_METADATA_BYTES) { "The NeoForge metadata is too large" }
+            require(metadataBytes.size <= MAX_METADATA_BYTES) { cphMessage("cph.download.error.jar_metadata_large") }
             val text = String(metadataBytes, StandardCharsets.UTF_8)
             val blocks = text.split(Regex("(?m)^\\s*\\[\\[mods]]\\s*$")).drop(1)
             val versions = linkedMapOf<String, String>()
@@ -31,7 +32,7 @@ object JarInspector {
                 val id = tomlValue(block, "modId")?.lowercase() ?: return@forEach
                 versions[id] = tomlValue(block, "version").orEmpty()
             }
-            require(versions.isNotEmpty()) { "The JAR declares no NeoForge mods" }
+            require(versions.isNotEmpty()) { cphMessage("cph.download.error.jar_no_mods") }
             return InspectedJar(versions.keys, versions)
         }
     }

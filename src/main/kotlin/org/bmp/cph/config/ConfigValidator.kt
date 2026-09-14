@@ -39,8 +39,10 @@ object ConfigValidator {
     )
     private val modFields = setOf(
         "enabled", "category", "name", "modId", "versionRange", "filePattern", "description", "descriptions",
-        "iconUrl", "projectUrl", "authors", "license", "links", "downloadUrl",
+        "iconUrl", "projectLinks", "projectUrl", "authors", "license", "links", "downloadUrl",
     )
+    private val projectLinksFields = setOf("homepage", "source", "issues", "wiki", "discord", "donations")
+    private val donationFields = setOf("label", "url")
     private val linkFields = setOf(
         "label", "url", "type", "projectId", "versionId", "fileId", "downloadUrl", "fileName", "sizeBytes",
         "sha256", "sha512", "sha1",
@@ -65,6 +67,18 @@ object ConfigValidator {
                 if (value.isJsonObject) {
                     val mod = value.asJsonObject
                     unknownFields(mod, modFields, "$listName[$index]")
+                    mod.objectAt("projectLinks")?.let { projectLinks ->
+                        unknownFields(projectLinks, projectLinksFields, "$listName[$index].projectLinks")
+                        projectLinks.get("donations")?.takeIf { it.isJsonArray }?.asJsonArray?.forEachIndexed { donationIndex, donation ->
+                            if (donation.isJsonObject) {
+                                unknownFields(
+                                    donation.asJsonObject,
+                                    donationFields,
+                                    "$listName[$index].projectLinks.donations[$donationIndex]",
+                                )
+                            }
+                        }
+                    }
                     mod.get("links")?.takeIf { it.isJsonArray }?.asJsonArray?.forEachIndexed { linkIndex, link ->
                         if (link.isJsonObject) unknownFields(link.asJsonObject, linkFields, "$listName[$index].links[$linkIndex]")
                     }
@@ -155,6 +169,23 @@ object ConfigValidator {
             }
             mod.projectUrl?.takeIf(String::isNotBlank)?.let { value ->
                 if (validHttpUri(value) == null) error("$path.projectUrl", "invalid_url", displayPath = modDisplayName)
+            }
+            val projectLinks = mod.resolvedProjectLinks()
+            listOf(
+                "homepage" to projectLinks.homepage,
+                "source" to projectLinks.source,
+                "issues" to projectLinks.issues,
+                "wiki" to projectLinks.wiki,
+                "discord" to projectLinks.discord,
+            ).forEach { (field, value) ->
+                if (!value.isNullOrBlank() && validHttpUri(value) == null) {
+                    error("$path.projectLinks.$field", "invalid_url", displayPath = modDisplayName)
+                }
+            }
+            projectLinks.donations.orEmpty().forEachIndexed { donationIndex, donation ->
+                if (validHttpUri(donation.url) == null) {
+                    error("$path.projectLinks.donations[$donationIndex].url", "invalid_url", displayPath = modDisplayName)
+                }
             }
             if (links.isEmpty()) error("$path.links", "missing_links", displayPath = modDisplayName)
             links.forEachIndexed { linkIndex, link ->

@@ -14,8 +14,14 @@ import net.neoforged.neoforge.client.gui.widget.ScrollPanel
 import org.bmp.cph.config.ResolvedMenuText
 import org.bmp.cph.client.download.SecureDownloadScreen
 import org.bmp.cph.client.editor.EditorScreenBase
+import org.bmp.cph.client.editor.EditorRect
+import org.bmp.cph.client.editor.RowAction
+import org.bmp.cph.client.editor.RowBadge
+import org.bmp.cph.client.editor.StyledActionList
 import org.bmp.cph.client.editor.TechButton
 import org.bmp.cph.client.editor.TechButtonStyle
+import org.bmp.cph.config.RequiredMod
+import org.bmp.cph.config.validHttpUri
 import java.net.URI
 
 class ModDetailsScreen(
@@ -62,12 +68,11 @@ class ModDetailsScreen(
         val backText = Component.literal(text.backButton)
         val back = TechButton.builder(backText) { onClose() }.style(TechButtonStyle.GHOST)
             .bounds(0, 0, compactButtonWidth(backText), 18).build()
-        val projectUrl = result.mod.projectUrl?.takeIf(String::isNotBlank)
-        val project = projectUrl?.let { url ->
-            val labelText = text.projectPageLabel.substringBefore("{value}").trim().trimEnd(':').ifBlank { "Project" }
-            val label = Component.literal(labelText)
-            TechButton.builder(label) { openProject(url) }.style(TechButtonStyle.GHOST)
-                .tooltip(Tooltip.create(Component.literal(url)))
+        val projectLinks = projectLinkActions(result.mod)
+        val project = projectLinks.takeIf(List<*>::isNotEmpty)?.let {
+            val label = Component.translatable("cph.project_links.open", it.size)
+            TechButton.builder(label) { minecraft?.setScreen(ProjectLinksScreen(this, result.mod)) }.style(TechButtonStyle.GHOST)
+                .tooltip(Tooltip.create(Component.translatable("cph.project_links.open.hint")))
                 .bounds(0, 0, compactButtonWidth(label, 72), 18).build()
         }
         addFooterActions(*listOfNotNull(back, project, downloadButton).toTypedArray())
@@ -101,7 +106,7 @@ class ModDetailsScreen(
         result.mod.license?.takeIf(String::isNotBlank)?.let {
             font.split(Component.literal(text.licenseLabel.replace("{value}", it)), maxWidth).forEach(::add)
         }
-        result.mod.projectUrl?.takeIf(String::isNotBlank)?.let {
+        result.mod.resolvedProjectLinks().homepage?.takeIf(String::isNotBlank)?.let {
             font.split(Component.literal(text.projectPageLabel.replace("{value}", it)), maxWidth).forEach(::add)
         }
         result.mod.availableLinks().takeIf(List<*>::isNotEmpty)?.let { links ->
@@ -128,13 +133,6 @@ class ModDetailsScreen(
             minecraft?.setScreen(SecureDownloadScreen.forSource(this, result, links.first()))
         } else if (links.isNotEmpty()) {
             minecraft?.setScreen(DownloadSourcesScreen(this, result, links, text))
-        }
-    }
-
-    private fun openProject(value: String) {
-        val uri = runCatching { URI(value.trim()) }.getOrNull() ?: return
-        if (uri.scheme.equals("https", true) || uri.scheme.equals("http", true)) {
-            ConfirmLinkScreen.confirmLinkNow(this, uri, true)
         }
     }
 
@@ -175,5 +173,68 @@ class ModDetailsScreen(
         override fun narrationPriority(): NarratableEntry.NarrationPriority = NarratableEntry.NarrationPriority.NONE
 
         override fun updateNarration(output: NarrationElementOutput) = Unit
+    }
+}
+
+private data class ProjectLinkAction(val label: Component, val url: String)
+
+private fun projectLinkActions(mod: RequiredMod): List<ProjectLinkAction> = buildList {
+    val links = mod.resolvedProjectLinks()
+    fun addLink(key: String, url: String?) {
+        validHttpUri(url)?.let { add(ProjectLinkAction(Component.translatable("cph.project_links.$key"), it.toString())) }
+    }
+    addLink("homepage", links.homepage)
+    addLink("source", links.source)
+    addLink("issues", links.issues)
+    addLink("wiki", links.wiki)
+    addLink("discord", links.discord)
+    links.donations.orEmpty().forEach { donation ->
+        validHttpUri(donation.url)?.let {
+            add(ProjectLinkAction(
+                donation.label?.takeIf(String::isNotBlank)?.let(Component::literal)
+                    ?: Component.translatable("cph.project_links.donation"),
+                it.toString(),
+            ))
+        }
+    }
+}.distinctBy { it.url }
+
+private class ProjectLinksScreen(parent: Screen, private val mod: RequiredMod) :
+    EditorScreenBase(Component.translatable("cph.project_links.title", mod.displayName()), parent) {
+    private var dialog = EditorRect(0, 0, 0, 0)
+
+    override fun usesModalBackground(): Boolean = true
+
+    override fun init() {
+        dialog = centeredModal(620, 330, 170)
+        val actions = projectLinkActions(mod)
+        val listWidth = (dialog.width - 12).coerceAtLeast(120)
+        val list = StyledActionList(
+            minecraft ?: Minecraft.getInstance(),
+            listWidth,
+            (dialog.height - 70).coerceAtLeast(38),
+            dialog.top + 38,
+            (listWidth - 10).coerceAtLeast(100),
+            36,
+            actions,
+            titleOf = { it.label.string },
+            subtitleOf = { it.url },
+            accentOf = { 0xFF58C7E8.toInt() },
+            badgeOf = { RowBadge(Component.literal("↗"), 0xFF78D8F4.toInt()) },
+            actionsOf = { action -> listOf(
+                RowAction(label = { Component.translatable("cph.project_links.open_action") }, width = 58) {
+                    ConfirmLinkScreen.confirmLinkNow(this, URI.create(action.url), true)
+                },
+            ) },
+        )
+        list.x = dialog.left + 6
+        addRenderableWidget(list)
+        val back = TechButton.builder(Component.translatable("cph.editor.back")) { onClose() }
+            .style(TechButtonStyle.GHOST).bounds(0, 0, 72, 18).build()
+        addCompactActions(dialog.left + 8, dialog.right - 8, dialog.bottom - 23, back)
+    }
+
+    override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+        drawModalFrame(guiGraphics, dialog, Component.translatable("cph.project_links.subtitle"))
     }
 }

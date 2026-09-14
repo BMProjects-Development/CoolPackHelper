@@ -3,7 +3,7 @@ package org.bmp.cph.config
 import com.google.gson.annotations.SerializedName
 import java.net.URI
 
-const val CONFIG_SCHEMA_VERSION = 4
+const val CONFIG_SCHEMA_VERSION = 5
 
 data class PackHelperConfig(
     @SerializedName("\$schema")
@@ -122,6 +122,8 @@ data class RequiredMod(
     var description: String? = null,
     var descriptions: Map<String, String>? = null,
     var iconUrl: String? = null,
+    var projectLinks: ProjectLinks? = null,
+    // Schema v1-v4 compatibility. New configs use projectLinks.homepage.
     var projectUrl: String? = null,
     var authors: List<String>? = null,
     var license: String? = null,
@@ -153,7 +155,29 @@ data class RequiredMod(
         }
         return description.orEmpty()
     }
+
+    fun resolvedProjectLinks(): ProjectLinks = (projectLinks ?: ProjectLinks()).let { links ->
+        if (!links.homepage.isNullOrBlank() || projectUrl.isNullOrBlank()) links
+        else links.copy(homepage = projectUrl)
+    }
 }
+
+data class ProjectLinks(
+    var homepage: String? = null,
+    var source: String? = null,
+    var issues: String? = null,
+    var wiki: String? = null,
+    var discord: String? = null,
+    var donations: List<ProjectDonationLink>? = null,
+) {
+    fun isEmpty(): Boolean = listOf(homepage, source, issues, wiki, discord).all(String?::isNullOrBlank) &&
+        donations.orEmpty().none { !it.url.isNullOrBlank() }
+}
+
+data class ProjectDonationLink(
+    var label: String? = null,
+    var url: String? = null,
+)
 
 data class DownloadLink(
     var label: String? = null,
@@ -472,6 +496,7 @@ private fun englishValidationMessages(): Map<String, String> = mapOf(
     "missing_integrity_hash" to "Add SHA-256 or SHA-512 before enabling automatic downloads from this direct source.",
     "missing_link_label" to "The website domain will be used as the link label.",
     "empty_config" to "The config file is empty.",
+    "config_too_large" to "The config exceeds the 8 MiB safety limit.",
     "parse_error" to "Could not parse the config: {details}",
     "save_error" to "Could not save the config: {details}",
 )
@@ -502,6 +527,7 @@ private fun russianValidationMessages(): Map<String, String> = mapOf(
     "missing_integrity_hash" to "Для автоматической загрузки с прямого источника укажите SHA-256 или SHA-512.",
     "missing_link_label" to "В качестве подписи будет использован домен сайта.",
     "empty_config" to "Файл конфигурации пуст.",
+    "config_too_large" to "Размер конфига превышает безопасный лимит 8 МиБ.",
     "parse_error" to "Не удалось прочитать конфиг: {details}",
     "save_error" to "Не удалось сохранить конфиг: {details}",
 )

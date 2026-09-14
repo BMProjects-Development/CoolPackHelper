@@ -20,7 +20,8 @@ object CurseForgeApiSupport {
         429 -> Component.translatable("cph.editor.curseforge.error.rate_limit").string
         else -> {
             val details = responseBody.trim().replace(Regex("\\s+"), " ").take(180)
-            if (details.isBlank()) "CurseForge HTTP $status" else "CurseForge HTTP $status: $details"
+            if (details.isBlank()) Component.translatable("cph.editor.curseforge.error.http", status).string
+            else Component.translatable("cph.editor.curseforge.error.http_details", status, details).string
         }
     }
 }

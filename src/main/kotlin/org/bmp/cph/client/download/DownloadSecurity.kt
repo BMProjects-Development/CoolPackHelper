@@ -1,6 +1,7 @@
 package org.bmp.cph.client.download
 
 import org.bmp.cph.config.DownloadSourceType
+import org.bmp.cph.client.cphMessage
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
@@ -17,19 +18,19 @@ object DownloadSecurity {
     )
 
     fun validateUri(uri: URI, sourceType: DownloadSourceType, resolveDns: Boolean = true): String? {
-        if (!uri.scheme.equals("https", ignoreCase = true)) return "Only HTTPS downloads are allowed"
-        if (uri.userInfo != null) return "URLs containing credentials are not allowed"
-        if (uri.port != -1 && uri.port != 443) return "Only the standard HTTPS port is allowed"
-        val host = uri.host?.lowercase()?.trimEnd('.') ?: return "The URL has no valid host"
-        if (host == "localhost" || host.endsWith(".localhost")) return "Local addresses are not allowed"
-        if (!hostAllowedForSource(host, sourceType)) return "The final host does not match the configured source"
+        if (!uri.scheme.equals("https", ignoreCase = true)) return cphMessage("cph.download.error.https_required")
+        if (uri.userInfo != null) return cphMessage("cph.download.error.credentials")
+        if (uri.port != -1 && uri.port != 443) return cphMessage("cph.download.error.port")
+        val host = uri.host?.lowercase()?.trimEnd('.') ?: return cphMessage("cph.download.error.invalid_host")
+        if (host == "localhost" || host.endsWith(".localhost")) return cphMessage("cph.download.error.local_address")
+        if (!hostAllowedForSource(host, sourceType)) return cphMessage("cph.download.error.source_host")
         if (resolveDns) {
             val addresses = try {
                 InetAddress.getAllByName(host)
             } catch (exception: Exception) {
-                return "Could not resolve the download host: ${exception.message ?: exception.javaClass.simpleName}"
+                return cphMessage("cph.download.error.resolve_host", exception.message ?: exception.javaClass.simpleName)
             }
-            if (addresses.isEmpty() || addresses.any(::isNonPublic)) return "Private, local, multicast, and reserved addresses are not allowed"
+            if (addresses.isEmpty() || addresses.any(::isNonPublic)) return cphMessage("cph.download.error.non_public_address")
         }
         return null
     }

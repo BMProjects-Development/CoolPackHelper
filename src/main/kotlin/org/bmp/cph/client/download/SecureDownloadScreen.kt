@@ -133,7 +133,8 @@ class SecureDownloadScreen private constructor(
                         (requests[index].source ?: DownloadLink()).resolvedType(),
                         DownloadTrustLevel.UNVERIFIED,
                         DownloadResolutionStatus.FAILED,
-                        message = exception.cause?.message ?: exception.message ?: "Resolution failed",
+                        message = exception.cause?.message ?: exception.message
+                            ?: Component.translatable("cph.download.error.resolution_failed").string,
                     )
                 }
             }
@@ -198,7 +199,10 @@ class SecureDownloadScreen private constructor(
         }.whenComplete { values, exception ->
             Minecraft.getInstance().execute {
                 results = values ?: downloads.map {
-                    InstallResult(it, false, message = exception?.message ?: "Installation failed")
+                    InstallResult(
+                        it, false, message = exception?.message
+                            ?: Component.translatable("cph.download.error.installation_failed").string,
+                    )
                 }
                 running = false
                 progress = null

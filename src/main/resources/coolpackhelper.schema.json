@@ -121,6 +121,30 @@
         "sha1": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" }
       }
     },
+    "projectDonationLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url"],
+      "properties": {
+        "label": { "type": "string" },
+        "url": { "type": "string", "format": "uri", "pattern": "^https?://" }
+      }
+    },
+    "projectLinks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "homepage": { "type": "string", "format": "uri", "pattern": "^https?://" },
+        "source": { "type": "string", "format": "uri", "pattern": "^https?://" },
+        "issues": { "type": "string", "format": "uri", "pattern": "^https?://" },
+        "wiki": { "type": "string", "format": "uri", "pattern": "^https?://" },
+        "discord": { "type": "string", "format": "uri", "pattern": "^https?://" },
+        "donations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/projectDonationLink" }
+        }
+      }
+    },
     "mod": {
       "type": "object",
       "additionalProperties": false,
@@ -142,6 +166,7 @@
           "pattern": "^https://(cdn\\.modrinth\\.com|media(?:filez)?\\.forgecdn\\.net)/"
         },
         "projectUrl": { "type": "string", "format": "uri", "pattern": "^https?://" },
+        "projectLinks": { "$ref": "#/$defs/projectLinks" },
         "authors": {
           "type": "array",
           "items": { "type": "string" },

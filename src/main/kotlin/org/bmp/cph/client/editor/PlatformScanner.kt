@@ -186,7 +186,7 @@ object PlatformScanner {
 
     private fun scanCurseForge(artifacts: List<LocalModArtifact>, apiKey: String): PlatformScanReport {
         val normalizedKey = CurseForgeApiSupport.normalizeKey(apiKey)
-        require(normalizedKey.isNotBlank()) { "CurseForge API key is required" }
+        require(normalizedKey.isNotBlank()) { tr("curseforge.key.required").string }
         val unmatched = mutableSetOf<Long>()
         val matched = mutableMapOf<Long, String>()
         artifacts.chunked(100).forEach { chunk ->
@@ -197,7 +197,7 @@ object PlatformScanner {
                 "https://api.curseforge.com/v1/fingerprints/432",
                 body,
                 mapOf("x-api-key" to normalizedKey),
-            ).getAsJsonObject("data") ?: error("CurseForge returned no data")
+            ).getAsJsonObject("data") ?: error(tr("scan.error.empty_response", "CurseForge").string)
             response.getAsJsonArray("unmatchedFingerprints")?.forEach { unmatched += it.asLong }
             response.getAsJsonArray("exactMatches")?.forEach { element ->
                 val match = element.asJsonObject
@@ -233,12 +233,12 @@ object PlatformScanner {
         headers.forEach(builder::setHeader)
         val response = http.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream())
         val bytes = response.body().use { it.readNBytes(MAX_API_RESPONSE_BYTES + 1) }
-        require(bytes.size <= MAX_API_RESPONSE_BYTES) { "The platform response is too large" }
+        require(bytes.size <= MAX_API_RESPONSE_BYTES) { tr("scan.error.response_too_large").string }
         val responseBody = String(bytes, StandardCharsets.UTF_8)
         if (response.statusCode() !in 200..299) {
             val isCurseForge = headers.keys.any { it.equals("x-api-key", ignoreCase = true) }
             error(if (isCurseForge) CurseForgeApiSupport.error(response.statusCode(), responseBody)
-            else "HTTP ${response.statusCode()}: ${responseBody.take(240)}")
+            else tr("scan.error.http", response.statusCode(), responseBody.take(240)).string)
         }
         return gson.fromJson(responseBody, JsonObject::class.java)
     }

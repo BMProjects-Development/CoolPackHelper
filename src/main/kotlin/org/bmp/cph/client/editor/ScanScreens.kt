@@ -89,7 +89,9 @@ class ScanScreen(
         if (!started) {
             started = true
             PlatformScanner.scanAsync(platform, apiKey).whenComplete { value, exception ->
-                val completed = value ?: PlatformScanReport(platform, emptyList(), exception?.message ?: "Unknown error")
+                val completed = value ?: PlatformScanReport(
+                    platform, emptyList(), exception?.message ?: tr("error.unknown").string,
+                )
                 Minecraft.getInstance().execute {
                     report = completed
                     completed.items.filter { it.status == PlatformMatchStatus.NOT_FOUND }.forEach { selected += it.artifact.fileName }

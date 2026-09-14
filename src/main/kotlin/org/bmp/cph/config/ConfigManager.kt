@@ -54,6 +54,13 @@ object ConfigManager {
         edited.mods = edited.activeModEntries()
         edited.requiredMods = null
         edited.showOnlyOnce = null
+        edited.menu?.defaultLanguage = null
+        edited.mods.orEmpty().forEach { mod ->
+            if (mod.projectLinks == null && !mod.projectUrl.isNullOrBlank()) {
+                mod.projectLinks = ProjectLinks(homepage = mod.projectUrl)
+            }
+            mod.projectUrl = null
+        }
 
         val root = gson.toJsonTree(edited)
         val issues = ConfigValidator.validateStructure(root) + ConfigValidator.validate(edited)
@@ -113,10 +120,27 @@ object ConfigManager {
                 return
             }
 
-            require(Files.size(path) <= MAX_CONFIG_BYTES) { "The CoolPackHelper config exceeds the 8 MiB safety limit" }
+            if (Files.size(path) > MAX_CONFIG_BYTES) {
+                config = PackHelperConfig.default().copy(mods = emptyList())
+                validationIssues = listOf(ConfigIssue(CONFIG_FILE, "config_too_large", IssueSeverity.ERROR))
+                return
+            }
 
-            val root = Files.newBufferedReader(path, StandardCharsets.UTF_8).use {
+            val parsedRoot = Files.newBufferedReader(path, StandardCharsets.UTF_8).use {
                 JsonParser.parseReader(it)
+            }
+            val migration = parsedRoot.takeIf { it.isJsonObject }?.asJsonObject?.let(ConfigMigrator::migrate)
+            val root = migration?.root ?: parsedRoot
+            if (migration?.changed == true) {
+                val backup = path.resolveSibling("${path.fileName}.v${migration.fromVersion}.bak")
+                Files.copy(path, backup, StandardCopyOption.REPLACE_EXISTING)
+                writeJson(path, migration.root)
+                Cph.LOGGER.info(
+                    "Migrated CoolPackHelper config schema from {} to {}; backup: {}",
+                    migration.fromVersion,
+                    CONFIG_SCHEMA_VERSION,
+                    backup,
+                )
             }
             val loaded = gson.fromJson(root, PackHelperConfig::class.java)
             if (loaded == null) {

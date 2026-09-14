@@ -62,7 +62,7 @@ private class MetadataImportScreen(
     private val type: DownloadSourceType,
     private val onChanged: () -> Unit,
 ) : EditorScreenBase(tr("metadata.import.title", type.name), parent) {
-    private lateinit var projectField: MultiLineEditBox
+    private var projectField: MultiLineEditBox? = null
     private var keyField: EditBox? = null
     private var projectValue = mod.links.orEmpty().firstOrNull { it.resolvedType() == type }
         ?.let { it.projectId?.takeIf(String::isNotBlank) ?: it.url }.orEmpty()
@@ -71,6 +71,9 @@ private class MetadataImportScreen(
     } else ""
     private var loading = false
     private var errorMessage: String? = null
+    private var previewMetadata: ProjectMetadata? = null
+    private var previewSource: DownloadLink? = null
+    private var previewExistingIndex = -1
     private var dialog = EditorRect(0, 0, 0, 0)
 
     override fun usesModalBackground(): Boolean = true
@@ -79,13 +82,16 @@ private class MetadataImportScreen(
         dialog = centeredModal(590, 270, 210)
         val contentWidth = dialog.width - 18
         val left = dialog.left + 9
-        projectField = StableMultiLineEditBox(font, left, dialog.top + 62, contentWidth, 34, tr("metadata.import.project"), tr("metadata.import.project")).also {
+        val preview = previewMetadata
+        if (preview == null) {
+            projectField = StableMultiLineEditBox(font, left, dialog.top + 62, contentWidth, 34, tr("metadata.import.project"), tr("metadata.import.project")).also {
             it.value = projectValue
             it.setCharacterLimit(2048)
             it.setValueListener { value -> projectValue = value.replace("\r", "").replace("\n", "") }
             addRenderableWidget(it)
+            }
         }
-        if (type == DownloadSourceType.CURSEFORGE) {
+        if (preview == null && type == DownloadSourceType.CURSEFORGE) {
             keyField = StableEditBox(font, left, dialog.top + 116, contentWidth, 18, tr("curseforge.key")).also {
                 it.value = keyValue
                 it.setMaxLength(512)
@@ -94,27 +100,53 @@ private class MetadataImportScreen(
                 addRenderableWidget(it)
             }
         }
-        val importText = tr(if (loading) "metadata.import.loading" else "metadata.import.action")
-        val import = TechButton.builder(importText) { import() }
-            .style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(importText, 90), 18).build()
-        import.active = !loading
         val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
             .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
         val actions = mutableListOf(back)
-        if (type == DownloadSourceType.CURSEFORGE) {
+        if (preview != null) {
+            val fill = tr("metadata.import.fill_empty")
+            val replace = tr("metadata.import.replace")
+            actions += TechButton.builder(fill) { applyPreview(MetadataApplyMode.FILL_EMPTY) }
+                .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("metadata.import.fill_empty.hint")))
+                .style(TechButtonStyle.SECONDARY).bounds(0, 0, compactButtonWidth(fill, 92), 18).build()
+            actions += TechButton.builder(replace) { applyPreview(MetadataApplyMode.REPLACE) }
+                .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("metadata.import.replace.hint")))
+                .style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(replace, 92), 18).build()
+        } else if (type == DownloadSourceType.CURSEFORGE) {
             actions += TechButton.builder(tr("curseforge.key.help")) { openKeyHelp() }
                 .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("curseforge.key.help.hint")))
                 .style(TechButtonStyle.GHOST)
                 .bounds(0, 0, compactButtonWidth(tr("curseforge.key.help"), 88), 18).build()
         }
-        actions += import
+        if (preview == null) {
+            val importText = tr(if (loading) "metadata.import.loading" else "metadata.import.action")
+            val import = TechButton.builder(importText) { import() }
+                .style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(importText, 90), 18).build()
+            import.active = !loading
+            actions += import
+        }
         addCompactActions(dialog.left + 8, dialog.right - 8, dialog.bottom - 23, *actions.toTypedArray())
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         drawModalFrame(guiGraphics, dialog, tr("metadata.import.subtitle.${type.name.lowercase()}"))
-        guiGraphics.drawString(font, tr("metadata.import.project.${type.name.lowercase()}"), projectField.x, projectField.y - 11, 0x90A7BC, false)
+        projectField?.let { guiGraphics.drawString(font, tr("metadata.import.project.${type.name.lowercase()}"), it.x, it.y - 11, 0x90A7BC, false) }
         keyField?.let { guiGraphics.drawString(font, tr("curseforge.key"), it.x, it.y - 11, 0x90A7BC, false) }
+        previewMetadata?.let { metadata ->
+            val links = metadata.projectLinks
+            val linkCount = listOf(links.homepage, links.source, links.issues, links.wiki, links.discord)
+                .count { !it.isNullOrBlank() } + links.donations.orEmpty().count { !it.url.isNullOrBlank() }
+            val lines = listOf(
+                tr("metadata.import.preview.name", metadata.name),
+                tr("metadata.import.preview.authors", metadata.authors.joinToString(", ").ifBlank { "—" }),
+                tr("metadata.import.preview.license", metadata.license ?: "—"),
+                tr("metadata.import.preview.links", linkCount),
+                tr("metadata.import.preview.description", Component.translatable(if (metadata.summary.isNullOrBlank()) "options.off" else "options.on")),
+            )
+            lines.forEachIndexed { index, line ->
+                guiGraphics.drawString(font, font.plainSubstrByWidth(line.string, dialog.width - 30), dialog.left + 15, dialog.top + 58 + index * 22, if (index == 0) EditorTheme.TEXT else EditorTheme.TEXT_MUTED, false)
+            }
+        }
         errorMessage?.let {
             font.split(Component.literal(it), (dialog.width - 24).coerceAtLeast(40)).take(2).forEachIndexed { index, line ->
                 guiGraphics.drawCenteredString(font, line, width / 2, dialog.bottom - 51 + index * 10, 0xFFFF7777.toInt())
@@ -147,22 +179,33 @@ private class MetadataImportScreen(
                 loading = false
                 if (Minecraft.getInstance().screen !== this) return@execute
                 if (metadata != null) {
-                    ProjectMetadataService.apply(metadata, mod, source)
-                    val links = mod.links.orEmpty().toMutableList()
-                    if (existingIndex in links.indices) links[existingIndex] = source else links += source
-                    mod.links = links
-                    onChanged()
-                    SystemToast.add(
-                        Minecraft.getInstance().toasts, SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
-                        tr("link.metadata.done"), Component.literal(metadata.name),
-                    )
-                    minecraft?.setScreen(previousScreen)
+                    previewMetadata = metadata
+                    previewSource = source
+                    previewExistingIndex = existingIndex
+                    rebuildWidgets()
                 } else {
-                    errorMessage = exception?.cause?.message ?: exception?.message ?: "Unknown error"
+                    errorMessage = exception?.cause?.message ?: exception?.message ?: tr("error.unknown").string
                     rebuildWidgets()
                 }
             }
         }
+    }
+
+    private fun applyPreview(mode: MetadataApplyMode) {
+        val metadata = previewMetadata ?: return
+        val source = previewSource ?: return
+        ProjectMetadataService.apply(
+            metadata, mod, source, "en_us", mode,
+        )
+        val links = mod.links.orEmpty().toMutableList()
+        if (previewExistingIndex in links.indices) links[previewExistingIndex] = source else links += source
+        mod.links = links
+        onChanged()
+        SystemToast.add(
+            Minecraft.getInstance().toasts, SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
+            tr("link.metadata.done"), Component.literal(metadata.name),
+        )
+        minecraft?.setScreen(previousScreen)
     }
 
     private fun openKeyHelp() {
@@ -186,9 +229,17 @@ private class MetadataFieldsList(
     data class Field(val label: Component, val value: () -> String, val wraps: Boolean = false, val changed: (String) -> Unit)
 
     init {
+        val projectLinks = mod.resolvedProjectLinks().also {
+            mod.projectLinks = it
+            mod.projectUrl = null
+        }
         listOf(
             Field(tr("metadata.icon"), { mod.iconUrl.orEmpty() }, wraps = true) { mod.iconUrl = it.singleLine().clean(); onChanged() },
-            Field(tr("metadata.project"), { mod.projectUrl.orEmpty() }, wraps = true) { mod.projectUrl = it.singleLine().clean(); onChanged() },
+            Field(tr("metadata.project"), { projectLinks.homepage.orEmpty() }, wraps = true) { projectLinks.homepage = it.singleLine().clean(); onChanged() },
+            Field(tr("metadata.source"), { projectLinks.source.orEmpty() }, wraps = true) { projectLinks.source = it.singleLine().clean(); onChanged() },
+            Field(tr("metadata.issues"), { projectLinks.issues.orEmpty() }, wraps = true) { projectLinks.issues = it.singleLine().clean(); onChanged() },
+            Field(tr("metadata.wiki"), { projectLinks.wiki.orEmpty() }, wraps = true) { projectLinks.wiki = it.singleLine().clean(); onChanged() },
+            Field(tr("metadata.discord"), { projectLinks.discord.orEmpty() }, wraps = true) { projectLinks.discord = it.singleLine().clean(); onChanged() },
             Field(tr("metadata.authors"), { mod.authors.orEmpty().joinToString(", ") }) {
                 mod.authors = it.split(',').map(String::trim).filter(String::isNotBlank).distinct().take(32)
                 onChanged()

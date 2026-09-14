@@ -12,6 +12,8 @@ import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import org.bmp.cph.config.DownloadLink
 import org.bmp.cph.config.DownloadSourceType
+import org.bmp.cph.config.ProjectDonationLink
+import org.bmp.cph.config.ProjectLinks
 import org.bmp.cph.config.RequiredMod
 
 class LinksEditorScreen(
@@ -82,7 +84,10 @@ class LinkEntryEditorScreen(
     private val onChanged: () -> Unit = {},
 ) : EditorScreenBase(tr("link.title"), parent) {
     private val working = (mod.links.orEmpty().getOrNull(index) ?: DownloadLink()).copy()
+    private val originalMetadata = ModMetadataSnapshot.capture(mod)
     private var metadataLoading = false
+    private var pendingMetadata: ProjectMetadata? = null
+    private var committed = false
     private var showAdvanced = false
     private var dialogLeft = 0
     private var dialogTop = 0
@@ -110,11 +115,29 @@ class LinkEntryEditorScreen(
                 .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("link.type.hint")))
                 .style(TechButtonStyle.SECONDARY).bounds(x + 8, y + 34, typeWidth, 18).build()
         )
-        val metadata = TechButton.builder(metadataText) { loadMetadata() }
-            .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("link.metadata.hint")))
-            .style(TechButtonStyle.SECONDARY).bounds(x + typeWidth + 13, y + 34, metadataWidth, 18).build()
-        metadata.active = !metadataLoading && working.resolvedType() in setOf(DownloadSourceType.MODRINTH, DownloadSourceType.CURSEFORGE)
-        addRenderableWidget(metadata)
+        val metadataX = x + typeWidth + 13
+        if (pendingMetadata == null) {
+            val metadata = TechButton.builder(metadataText) { loadMetadata() }
+                .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("link.metadata.hint")))
+                .style(TechButtonStyle.SECONDARY).bounds(metadataX, y + 34, metadataWidth, 18).build()
+            metadata.active = !metadataLoading && working.resolvedType() in setOf(DownloadSourceType.MODRINTH, DownloadSourceType.CURSEFORGE)
+            addRenderableWidget(metadata)
+        } else {
+            val fillText = tr("metadata.import.fill_empty")
+            val replaceText = tr("metadata.import.replace")
+            val fillWidth = compactButtonWidth(fillText, 88, 150)
+            addRenderableWidget(
+                TechButton.builder(fillText) { applyPendingMetadata(MetadataApplyMode.FILL_EMPTY) }
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("metadata.import.fill_empty.hint")))
+                    .style(TechButtonStyle.SECONDARY).bounds(metadataX, y + 34, fillWidth, 18).build()
+            )
+            addRenderableWidget(
+                TechButton.builder(replaceText) { applyPendingMetadata(MetadataApplyMode.REPLACE) }
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("metadata.import.replace.hint")))
+                    .style(TechButtonStyle.PRIMARY)
+                    .bounds(metadataX + fillWidth + 5, y + 34, compactButtonWidth(replaceText, 88, 150), 18).build()
+            )
+        }
         val listWidth = (w - 12).coerceAtLeast(120)
         val listTop = y + 58
         val list = DownloadSourceFieldsList(
@@ -166,20 +189,13 @@ class LinkEntryEditorScreen(
             Minecraft.getInstance().execute {
                 metadataLoading = false
                 if (value != null) {
-                    ProjectMetadataService.apply(value, mod, working)
-                    onChanged()
-                    SystemToast.add(
-                        Minecraft.getInstance().toasts,
-                        SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
-                        tr("link.metadata.done"),
-                        Component.literal(value.name),
-                    )
+                    pendingMetadata = value
                 } else {
                     SystemToast.add(
                         Minecraft.getInstance().toasts,
                         SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
                         tr("link.metadata.failed"),
-                        Component.literal(exception?.cause?.message ?: exception?.message ?: "Unknown error"),
+                        Component.literal(exception?.cause?.message ?: exception?.message ?: tr("error.unknown").string),
                     )
                 }
                 if (Minecraft.getInstance().screen === this) rebuildWidgets()
@@ -188,13 +204,36 @@ class LinkEntryEditorScreen(
     }
 
     override fun onClose() {
-        if (!metadataLoading) super.onClose()
+        if (!metadataLoading) {
+            if (!committed) {
+                originalMetadata.restore(mod)
+                onChanged()
+            }
+            super.onClose()
+        }
     }
 
     private fun save() {
         commitWorking()
+        committed = true
         onChanged()
-        onClose()
+        super.onClose()
+    }
+
+    private fun applyPendingMetadata(mode: MetadataApplyMode) {
+        val metadata = pendingMetadata ?: return
+        ProjectMetadataService.apply(
+            metadata, mod, working, "en_us", mode,
+        )
+        pendingMetadata = null
+        onChanged()
+        SystemToast.add(
+            Minecraft.getInstance().toasts,
+            SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
+            tr("link.metadata.done"),
+            Component.literal(metadata.name),
+        )
+        rebuildWidgets()
     }
 
     private fun commitWorking() {
@@ -203,6 +242,42 @@ class LinkEntryEditorScreen(
         mod.links = mutable
     }
 }
+
+private data class ModMetadataSnapshot(
+    val name: String?,
+    val iconUrl: String?,
+    val projectLinks: ProjectLinks?,
+    val projectUrl: String?,
+    val authors: List<String>?,
+    val license: String?,
+    val descriptions: Map<String, String>?,
+) {
+    fun restore(mod: RequiredMod) {
+        mod.name = name
+        mod.iconUrl = iconUrl
+        mod.projectLinks = projectLinks?.deepCopy()
+        mod.projectUrl = projectUrl
+        mod.authors = authors?.toList()
+        mod.license = license
+        mod.descriptions = descriptions?.toMap()
+    }
+
+    companion object {
+        fun capture(mod: RequiredMod) = ModMetadataSnapshot(
+            mod.name,
+            mod.iconUrl,
+            mod.projectLinks?.deepCopy(),
+            mod.projectUrl,
+            mod.authors?.toList(),
+            mod.license,
+            mod.descriptions?.toMap(),
+        )
+    }
+}
+
+private fun ProjectLinks.deepCopy(): ProjectLinks = copy(
+    donations = donations?.map { ProjectDonationLink(it.label, it.url) },
+)
 
 private class DownloadSourceFieldsList(
     minecraft: Minecraft,

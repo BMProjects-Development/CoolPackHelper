@@ -4,6 +4,7 @@ import net.neoforged.fml.loading.FMLPaths
 import org.apache.maven.artifact.versioning.DefaultArtifactVersion
 import org.apache.maven.artifact.versioning.VersionRange
 import org.bmp.cph.Cph
+import org.bmp.cph.client.cphMessage
 import java.io.InputStream
 import java.net.URI
 import java.net.http.HttpClient
@@ -42,15 +43,15 @@ object SecureDownloadManager {
         progress: (DownloadProgress) -> Unit = {},
     ): InstallResult {
         if (download.status != DownloadResolutionStatus.READY || download.downloadUri == null || download.fileName == null) {
-            return InstallResult(download, false, message = download.message ?: "The source is not installable")
+            return InstallResult(download, false, message = download.message ?: message("not_installable"))
         }
         val modsDirectory = FMLPaths.MODSDIR.get().toAbsolutePath().normalize()
         val localRoot = FMLPaths.GAMEDIR.get().resolve("local").resolve("coolpackhelper").toAbsolutePath().normalize()
         val temporaryDirectory = localRoot.resolve("downloads")
         val safeName = DownloadSecurity.safeFileName(download.fileName)
-            ?: return InstallResult(download, false, message = "Unsafe or unsupported filename")
+            ?: return InstallResult(download, false, message = message("unsafe_filename"))
         val target = modsDirectory.resolve(safeName).normalize()
-        if (!target.startsWith(modsDirectory)) return InstallResult(download, false, message = "Unsafe target path")
+        if (!target.startsWith(modsDirectory)) return InstallResult(download, false, message = message("unsafe_target"))
         val temporary = temporaryDirectory.resolve("${UUID.randomUUID()}-$safeName.part")
         val movedBackups = linkedMapOf<Path, Path>()
         var installedTarget = false
@@ -86,7 +87,7 @@ object SecureDownloadManager {
                     movedBackups,
                 )
             )
-            InstallResult(download, true, target, recordId, "Installed successfully. Restart Minecraft to load the mod.")
+            InstallResult(download, true, target, recordId, message("installed_restart"))
         } catch (exception: Exception) {
             Cph.LOGGER.error("Could not securely install {}", download.mod.displayName(), exception)
             try {
@@ -125,21 +126,23 @@ object SecureDownloadManager {
             val current = http.send(request, HttpResponse.BodyHandlers.ofInputStream())
             if (current.statusCode() in 300..399) {
                 current.body().close()
-                require(redirects < MAX_REDIRECTS) { "Too many redirects" }
+                require(redirects < MAX_REDIRECTS) { message("redirects") }
                 redirects++
-                val location = current.headers().firstValue("Location").orElseThrow { IllegalStateException("Redirect without Location") }
+                val location = current.headers().firstValue("Location").orElseThrow {
+                    IllegalStateException(message("redirect_location"))
+                }
                 uri = uri.resolve(location)
             } else {
                 received = current
                 break
             }
         }
-        require(received.statusCode() in 200..299) { "Download failed with HTTP ${received.statusCode()}" }
+        require(received.statusCode() in 200..299) { message("download_http", received.statusCode()) }
         val declaredLength = received.headers().firstValueAsLong("Content-Length").orElse(-1L)
         val expectedSize = download.sizeBytes
-        if (declaredLength > MAX_FILE_BYTES) error("The file exceeds the 512 MiB safety limit")
-        if (expectedSize != null && expectedSize > MAX_FILE_BYTES) error("The expected file exceeds the 512 MiB safety limit")
-        if (expectedSize != null && declaredLength >= 0 && expectedSize != declaredLength) error("The server reported an unexpected file size")
+        if (declaredLength > MAX_FILE_BYTES) error(message("file_too_large"))
+        if (expectedSize != null && expectedSize > MAX_FILE_BYTES) error(message("expected_file_too_large"))
+        if (expectedSize != null && declaredLength >= 0 && expectedSize != declaredLength) error(message("server_size"))
 
         val algorithms = (download.hashes.keys + "SHA-256").associateWith(MessageDigest::getInstance)
         var written = 0L
@@ -150,34 +153,34 @@ object SecureDownloadManager {
                     val count = input.read(buffer)
                     if (count < 0) break
                     written += count
-                    require(written <= MAX_FILE_BYTES) { "The file exceeds the 512 MiB safety limit" }
+                    require(written <= MAX_FILE_BYTES) { message("file_too_large") }
                     algorithms.values.forEach { it.update(buffer, 0, count) }
                     output.write(buffer, 0, count)
                     progress(DownloadProgress(download.mod.displayName(), download.fileName!!, written, expectedSize ?: declaredLength.takeIf { it >= 0 }))
                 }
             }
         }
-        if (expectedSize != null && written != expectedSize) error("Downloaded size does not match the expected size")
-        require(written > 0) { "The downloaded file is empty" }
+        if (expectedSize != null && written != expectedSize) error(message("downloaded_size"))
+        require(written > 0) { message("empty_file") }
         return algorithms.mapValues { (_, digest) -> digest.digest().toHex() }
     }
 
     private fun verifyExpected(download: ResolvedDownload, actual: Map<String, String>) {
         download.hashes.forEach { (algorithm, expected) ->
-            val value = actual[algorithm] ?: error("Unsupported hash algorithm $algorithm")
-            require(MessageDigest.isEqual(value.hexBytes(), expected.hexBytes())) { "$algorithm integrity check failed" }
+            val value = actual[algorithm] ?: error(message("hash_unsupported", algorithm))
+            require(MessageDigest.isEqual(value.hexBytes(), expected.hexBytes())) { message("hash_failed", algorithm) }
         }
     }
 
     private fun verifyMod(download: ResolvedDownload, jar: InspectedJar) {
         val expectedId = download.mod.modId?.trim()?.lowercase()
         if (!expectedId.isNullOrBlank()) {
-            require(expectedId in jar.modIds) { "The JAR does not contain the expected mod '$expectedId'" }
+            require(expectedId in jar.modIds) { message("wrong_mod", expectedId) }
             val range = download.mod.versionRange?.trim().orEmpty()
             val version = jar.versions[expectedId].orEmpty()
             if (range.isNotEmpty() && version.isNotEmpty() && !version.contains('$')) {
                 require(VersionRange.createFromVersionSpec(range).containsVersion(DefaultArtifactVersion(version))) {
-                    "Downloaded version $version does not satisfy $range"
+                    message("wrong_version", version, range)
                 }
             }
         }
@@ -220,8 +223,11 @@ object SecureDownloadManager {
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 
+    private fun message(key: String, vararg arguments: Any): String =
+        cphMessage("cph.download.error.$key", *arguments)
+
     private fun String.hexBytes(): ByteArray {
-        require(length % 2 == 0 && matches(Regex("^[0-9a-fA-F]+$"))) { "Invalid expected hash" }
+        require(length % 2 == 0 && matches(Regex("^[0-9a-fA-F]+$"))) { message("invalid_hash") }
         return chunked(2).map { it.toInt(16).toByte() }.toByteArray()
     }
 }

@@ -5,6 +5,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import org.bmp.cph.Cph
 import org.bmp.cph.client.curseforge.CurseForgeApiSupport
+import org.bmp.cph.client.cphMessage
 import org.bmp.cph.config.ConfigManager
 import org.bmp.cph.config.DownloadLink
 import org.bmp.cph.config.DownloadSourceType
@@ -35,7 +36,7 @@ object DownloadResolver {
 
     internal fun resolveBest(mod: RequiredMod): ResolvedDownload {
         val sources = mod.availableLinks().sortedBy { sourcePriority(it.resolvedType()) }
-        if (sources.isEmpty()) return failed(mod, DownloadLink(), "No download sources are configured")
+        if (sources.isEmpty()) return failed(mod, DownloadLink(), message("no_sources"))
         var firstPageOnly: ResolvedDownload? = null
         var firstFailure: ResolvedDownload? = null
         for (source in sources) {
@@ -51,7 +52,7 @@ object DownloadResolver {
                 DownloadResolutionStatus.FAILED -> if (firstFailure == null) firstFailure = attempt
             }
         }
-        return firstPageOnly ?: firstFailure ?: failed(mod, sources.first(), "No usable source was found")
+        return firstPageOnly ?: firstFailure ?: failed(mod, sources.first(), message("no_usable_source"))
     }
 
     internal fun resolve(mod: RequiredMod, source: DownloadLink): ResolvedDownload = try {
@@ -60,7 +61,7 @@ object DownloadResolver {
             DownloadSourceType.CURSEFORGE -> resolveCurseForge(mod, source)
             DownloadSourceType.GITHUB_RELEASE -> resolveGithub(mod, source)
             DownloadSourceType.DIRECT -> resolveDirect(mod, source)
-            DownloadSourceType.PAGE -> pageOnly(mod, source, "This source can only be opened in a browser")
+            DownloadSourceType.PAGE -> pageOnly(mod, source, message("page_only"))
         }
     } catch (exception: Exception) {
         Cph.LOGGER.warn("Could not resolve download source {} for {}", source.displayLabel(), mod.displayName(), exception)
@@ -69,7 +70,7 @@ object DownloadResolver {
 
     private fun resolveModrinth(mod: RequiredMod, source: DownloadLink): ResolvedDownload {
         val project = source.projectId?.takeIf(String::isNotBlank) ?: modrinthProjectFrom(source.url)
-            ?: return pageOnly(mod, source, "Set a Modrinth project ID or project URL")
+            ?: return pageOnly(mod, source, message("modrinth_project"))
         val version = if (!source.versionId.isNullOrBlank()) {
             getJsonObject("https://api.modrinth.com/v2/version/${encodePath(source.versionId!!)}")
         } else {
@@ -78,13 +79,13 @@ object DownloadResolver {
                     "?loaders=%5B%22neoforge%22%5D&game_versions=%5B%221.21.1%22%5D",
             )
             versions.takeIf(JsonElement::isJsonArray)?.asJsonArray?.firstOrNull()?.asJsonObject
-                ?: return pageOnly(mod, source, "No compatible NeoForge 1.21.1 version was found on Modrinth")
+                ?: return pageOnly(mod, source, message("modrinth_no_version"))
         }
         val file = version.getAsJsonArray("files")?.map(JsonElement::getAsJsonObject)
             ?.sortedByDescending { it.get("primary")?.asBoolean == true }
             ?.firstOrNull { DownloadSecurity.safeFileName(it.get("filename")?.asString) != null }
-            ?: return failed(mod, source, "Modrinth returned no installable JAR")
-        val uri = validHttpUri(file.get("url")?.asString) ?: return failed(mod, source, "Modrinth returned an invalid download URL")
+            ?: return failed(mod, source, message("modrinth_no_jar"))
+        val uri = validHttpUri(file.get("url")?.asString) ?: return failed(mod, source, message("modrinth_invalid_url"))
         val hashes = linkedMapOf<String, String>()
         file.getAsJsonObject("hashes")?.let {
             it.get("sha512")?.asString?.let { value -> hashes["SHA-512"] = value.lowercase() }
@@ -92,7 +93,7 @@ object DownloadResolver {
         }
         configuredHashes(source).forEach { (algorithm, configured) ->
             val official = hashes[algorithm]
-            require(official == null || official.equals(configured, ignoreCase = true)) { "$algorithm does not match Modrinth metadata" }
+            require(official == null || official.equals(configured, ignoreCase = true)) { message("hash_platform_mismatch", algorithm, "Modrinth") }
             hashes.putIfAbsent(algorithm, configured)
         }
         return ready(
@@ -106,7 +107,7 @@ object DownloadResolver {
         val direct = validHttpUri(source.downloadUrl)
         if (direct != null && direct.host.lowercase().endsWith(".forgecdn.net")) {
             val hashes = configuredHashes(source)
-            if (hashes.isEmpty()) return pageOnly(mod, source, "A hash is required for a preconfigured CurseForge CDN URL")
+            if (hashes.isEmpty()) return pageOnly(mod, source, message("curseforge_cdn_hash"))
             return ready(
                 mod, source, DownloadSourceType.CURSEFORGE, DownloadTrustLevel.PLATFORM,
                 validHttpUri(source.url), direct, source.fileName ?: direct.path.substringAfterLast('/'), source.sizeBytes, hashes,
@@ -117,12 +118,12 @@ object DownloadResolver {
         val apiKey = CurseForgeApiSupport.normalizeKey(ConfigManager.loadAuthorSettings().curseForgeApiKey)
             .takeIf(String::isNotBlank)
         if (projectId == null || fileId == null || apiKey == null) {
-            return pageOnly(mod, source, "CurseForge automatic download requires project ID, file ID, and a locally configured API key")
+            return pageOnly(mod, source, message("curseforge_requirements"))
         }
         val file = getJsonObject("https://api.curseforge.com/v1/mods/${encodePath(projectId)}/files/${encodePath(fileId)}", mapOf("x-api-key" to apiKey))
-            .getAsJsonObject("data") ?: return failed(mod, source, "CurseForge returned no file metadata")
+            .getAsJsonObject("data") ?: return failed(mod, source, message("curseforge_no_file"))
         val uri = validHttpUri(file.get("downloadUrl")?.takeUnless(JsonElement::isJsonNull)?.asString)
-            ?: return pageOnly(mod, source, "The author does not allow this file to be downloaded by third-party clients")
+            ?: return pageOnly(mod, source, message("curseforge_download_disabled"))
         val hashes = linkedMapOf<String, String>()
         file.getAsJsonArray("hashes")?.forEach { element ->
             val value = element.asJsonObject
@@ -130,10 +131,10 @@ object DownloadResolver {
         }
         configuredHashes(source).forEach { (algorithm, configured) ->
             val official = hashes[algorithm]
-            require(official == null || official.equals(configured, ignoreCase = true)) { "$algorithm does not match CurseForge metadata" }
+            require(official == null || official.equals(configured, ignoreCase = true)) { message("hash_platform_mismatch", algorithm, "CurseForge") }
             hashes.putIfAbsent(algorithm, configured)
         }
-        if (hashes.isEmpty()) return failed(mod, source, "CurseForge returned no supported integrity hash")
+        if (hashes.isEmpty()) return failed(mod, source, message("curseforge_no_hash"))
         return ready(
             mod, source, DownloadSourceType.CURSEFORGE, DownloadTrustLevel.PLATFORM,
             validHttpUri(source.url), uri, file.get("fileName")?.asString, file.get("fileLength")?.asLong, hashes,
@@ -142,9 +143,9 @@ object DownloadResolver {
 
     private fun resolveGithub(mod: RequiredMod, source: DownloadLink): ResolvedDownload {
         val direct = validHttpUri(source.downloadUrl ?: source.url)
-            ?: return pageOnly(mod, source, "Set a GitHub Release Asset URL")
+            ?: return pageOnly(mod, source, message("github_asset_url"))
         val match = GITHUB_RELEASE.matchEntire(direct.toString())
-            ?: return pageOnly(mod, source, "Only GitHub Release Assets can be installed automatically")
+            ?: return pageOnly(mod, source, message("github_release_only"))
         val owner = match.groupValues[1]
         val repository = match.groupValues[2]
         val tag = URLDecoder.decode(match.groupValues[3], StandardCharsets.UTF_8)
@@ -162,27 +163,27 @@ object DownloadResolver {
             size = asset?.get("size")?.asLong ?: size
         }
         if (hashes["SHA-256"] == null) {
-            return pageOnly(mod, source, "GitHub automatic download requires a SHA-256 digest")
+            return pageOnly(mod, source, message("github_hash"))
         }
         return ready(
             mod, source, DownloadSourceType.GITHUB_RELEASE, DownloadTrustLevel.REPOSITORY,
             URI.create("https://github.com/$owner/$repository/releases/tag/${encodePath(tag)}"), direct,
             source.fileName ?: assetName, size, hashes,
-            if (immutable) "Immutable GitHub release" else "Verify the repository owner before installing",
+            if (immutable) message("github_immutable") else message("github_verify_owner"),
         )
     }
 
     private fun resolveDirect(mod: RequiredMod, source: DownloadLink): ResolvedDownload {
         val uri = validHttpUri(source.downloadUrl ?: source.url)
-            ?: return pageOnly(mod, source, "Set a valid HTTPS download URL")
+            ?: return pageOnly(mod, source, message("direct_url"))
         val hashes = configuredHashes(source)
         if (hashes["SHA-512"] == null && hashes["SHA-256"] == null) {
-            return pageOnly(mod, source, "Direct downloads require SHA-256 or SHA-512")
+            return pageOnly(mod, source, message("direct_hash"))
         }
         return ready(
             mod, source, DownloadSourceType.DIRECT, DownloadTrustLevel.UNVERIFIED,
             validHttpUri(source.url), uri, source.fileName ?: uri.path.substringAfterLast('/'), source.sizeBytes, hashes,
-            "The publisher and contents of this external file are not verified",
+            message("direct_unverified"),
         )
     }
 
@@ -199,9 +200,9 @@ object DownloadResolver {
         message: String? = null,
     ): ResolvedDownload {
         val safeName = DownloadSecurity.safeFileName(fileName)
-            ?: return failed(mod, source, "The source did not provide a safe JAR filename")
+            ?: return failed(mod, source, message("unsafe_filename"))
         DownloadSecurity.validateUri(download, type, resolveDns = false)?.let { return failed(mod, source, it) }
-        if (hashes.isEmpty()) return failed(mod, source, "No supported integrity hash is available")
+        if (hashes.isEmpty()) return failed(mod, source, message("no_hash"))
         return ResolvedDownload(mod, source, type, trust, DownloadResolutionStatus.READY, page, download, safeName, size, hashes, message)
     }
 
@@ -256,17 +257,20 @@ object DownloadResolver {
             .build()
         val response = http.send(request, HttpResponse.BodyHandlers.ofInputStream())
         val bytes = response.body().use { it.readNBytes(MAX_API_RESPONSE_BYTES + 1) }
-        require(bytes.size <= MAX_API_RESPONSE_BYTES) { "The API response is too large" }
+        require(bytes.size <= MAX_API_RESPONSE_BYTES) { message("api_too_large") }
         val body = String(bytes, StandardCharsets.UTF_8)
         if (response.statusCode() !in 200..299) {
             val isCurseForge = headers.keys.any { it.equals("x-api-key", ignoreCase = true) }
             error(if (isCurseForge) CurseForgeApiSupport.error(response.statusCode(), body)
-            else "HTTP ${response.statusCode()}: ${body.take(180)}")
+            else message("http_details", response.statusCode(), body.take(180)))
         }
         return gson.fromJson(body, JsonElement::class.java)
     }
 
     private fun encodePath(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
+
+    private fun message(key: String, vararg arguments: Any): String =
+        cphMessage("cph.download.error.$key", *arguments)
 
     private val GITHUB_RELEASE = Regex("https://github\\.com/([^/]+)/([^/]+)/releases/download/([^/]+)/([^?#]+)", RegexOption.IGNORE_CASE)
 }
