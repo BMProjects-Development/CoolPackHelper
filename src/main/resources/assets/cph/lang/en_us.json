@@ -213,6 +213,7 @@
   "cph.requirements.compact": "Compact",
   "cph.requirements.compact.hint": "Return to the compact window over the main menu.",
   "cph.requirements.install.hint": "Verify available sources and install supported mods.",
+  "cph.requirements.more": "+ %s more",
   "cph.requirements.action.hint": "%s",
   "cph.history.title": "Installation history",
   "cph.history.subtitle": "%s active installation record(s)",

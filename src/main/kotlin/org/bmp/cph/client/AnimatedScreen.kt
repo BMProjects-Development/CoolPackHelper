@@ -28,6 +28,12 @@ abstract class AnimatedScreen(
         return (alpha shl 24) or (rgb and 0xFFFFFF)
     }
 
+    protected fun animatedAlphaColor(argb: Int): Int {
+        val sourceAlpha = argb ushr 24 and 0xFF
+        val alpha = (sourceAlpha * transitionProgress()).roundToInt().coerceIn(0, 255)
+        return (alpha shl 24) or (argb and 0xFFFFFF)
+    }
+
     override fun onClose() {
         if (closingAt == null) closingAt = Util.getMillis()
     }

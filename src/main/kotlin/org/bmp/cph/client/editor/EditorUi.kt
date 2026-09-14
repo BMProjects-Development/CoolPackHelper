@@ -1,6 +1,7 @@
 package org.bmp.cph.client.editor
 
 import net.minecraft.Util
+import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.Font
 import net.minecraft.client.gui.components.AbstractButton
@@ -176,13 +177,22 @@ abstract class EditorScreenBase(
         if (scaledWidth != width || scaledHeight != height) resize(client, scaledWidth, scaledHeight)
     }
 
+    override fun resize(minecraft: Minecraft, width: Int, height: Int) {
+        // Modal screens render their parent themselves. Keep that parent at the
+        // current GUI size as well, otherwise a window/fullscreen switch leaves
+        // the title panorama and its widgets rendered in the old viewport.
+        previousScreen.resize(minecraft, width, height)
+        super.resize(minecraft, width, height)
+    }
+
     protected open fun usesModalBackground(): Boolean = false
 
     final override fun renderBackground(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         if (usesModalBackground()) {
             previousScreen.render(guiGraphics, mouseX, mouseY, partialTick)
+            guiGraphics.flush()
             renderBlurredBackground(partialTick)
-            guiGraphics.fill(0, 0, width, height, animatedColor(0x7A080A0D))
+            guiGraphics.fill(0, 0, width, height, animatedAlphaColor(modalScrimColor()))
         } else {
             renderEditorBackground(guiGraphics)
         }
@@ -190,6 +200,8 @@ abstract class EditorScreenBase(
     }
 
     protected open fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) = Unit
+
+    protected open fun modalScrimColor(): Int = 0x66080A0D
 
     protected fun renderEditorBackground(guiGraphics: GuiGraphics) {
         guiGraphics.fillGradient(0, 0, width, height, EditorTheme.BACKGROUND_TOP, EditorTheme.BACKGROUND_BOTTOM)

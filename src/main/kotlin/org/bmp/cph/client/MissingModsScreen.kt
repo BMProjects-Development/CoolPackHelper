@@ -34,8 +34,19 @@ class MissingModsScreen(
     private var modalTop = 0
     private var modalRight = 0
     private var modalBottom = 0
+    private var lastFullscreen = Minecraft.getInstance().window.isFullscreen
 
     override fun usesModalBackground(): Boolean = !expanded
+    override fun modalScrimColor(): Int = 0x42080A0D
+
+    override fun resize(minecraft: Minecraft, width: Int, height: Int) {
+        val fullscreen = minecraft.window.isFullscreen
+        if (fullscreen != lastFullscreen) {
+            lastFullscreen = fullscreen
+            expanded = fullscreen
+        }
+        super.resize(minecraft, width, height)
+    }
 
     override fun init() {
         if (!expanded) {
@@ -81,10 +92,29 @@ class MissingModsScreen(
             val textWidth = (modalRight - modalLeft - 20).coerceAtLeast(40)
             guiGraphics.drawString(font, font.plainSubstrByWidth(text.title, textWidth), modalLeft + 10, modalTop + 9, animatedColor(0xF0F1F3), false)
             guiGraphics.drawString(font, font.plainSubstrByWidth(summary, textWidth), modalLeft + 10, modalTop + 23, animatedColor(0x9AA2AD), false)
-            guiGraphics.drawString(font, font.plainSubstrByWidth(text.description, textWidth), modalLeft + 10, modalTop + 37, animatedColor(0x7F8996), false)
-            if (filteredResults().isEmpty()) {
-                val message = if (results.isEmpty()) text.allResolvedMessage else text.emptyTabMessage
-                guiGraphics.drawCenteredString(font, message, width / 2, (listTop + listBottom) / 2, animatedColor(0xAFAFAF))
+            guiGraphics.fill(modalLeft + 10, modalTop + 39, modalRight - 10, modalTop + 40, animatedAlphaColor(0x5530343C))
+            val preview = results.take(2)
+            preview.forEachIndexed { index, result ->
+                val name = "• ${result.mod.displayName()}"
+                guiGraphics.drawString(
+                    font,
+                    font.plainSubstrByWidth(name, textWidth),
+                    modalLeft + 10,
+                    modalTop + 48 + index * 12,
+                    animatedColor(0xC9CDD3),
+                    false,
+                )
+            }
+            val remaining = results.size - preview.size
+            if (remaining > 0) {
+                guiGraphics.drawString(
+                    font,
+                    Component.translatable("cph.requirements.more", remaining),
+                    modalLeft + 10,
+                    modalTop + 72,
+                    animatedColor(0x7F8996),
+                    false,
+                )
             }
             return
         }
@@ -120,22 +150,12 @@ class MissingModsScreen(
     }
 
     private fun initCompactWindow() {
-        val modalWidth = (width - 24).coerceAtMost(470).coerceAtLeast(220)
-        val modalHeight = (height - 24).coerceAtMost(250).coerceAtLeast(174)
+        val modalWidth = (width - 44).coerceAtMost(340).coerceAtLeast(250)
+        val modalHeight = (height - 40).coerceAtMost(126).coerceAtLeast(110)
         modalLeft = (width - modalWidth) / 2
         modalTop = (height - modalHeight) / 2 + slideOffset(8)
         modalRight = modalLeft + modalWidth
         modalBottom = modalTop + modalHeight
-        listTop = modalTop + 54
-        listBottom = modalBottom - 31
-        val listWidth = (modalWidth - 12).coerceAtLeast(120)
-        val list = MissingModsList(
-            minecraft ?: Minecraft.getInstance(), listWidth, (listBottom - listTop).coerceAtLeast(40), listTop,
-            (listWidth - 10).coerceAtLeast(100), true, results, text, text.languageCode,
-            ::openDownload, ::openDetails, ::transitionProgress,
-        )
-        list.x = modalLeft + 6
-        addRenderableWidget(list)
 
         val close = button(text.continueButton, ::onClose, TechButtonStyle.GHOST)
         val expandText = Component.translatable("cph.requirements.expand")
@@ -145,11 +165,12 @@ class MissingModsScreen(
         }.style(TechButtonStyle.SECONDARY)
             .tooltip(Tooltip.create(Component.translatable("cph.requirements.expand.hint")))
             .bounds(0, 0, compactButtonWidth(expandText, 72), 18).build()
-        addCompactActions(modalLeft + 8, modalRight - 8, modalBottom - 23, close, expand, bulkDownloadButton())
+        addCompactActions(modalLeft + 8, modalRight - 8, modalBottom - 23, close, expand, bulkDownloadButton(compact = true))
     }
 
-    private fun bulkDownloadButton(): TechButton {
-        val label = Component.translatable("cph.download.install_missing", results.size)
+    private fun bulkDownloadButton(compact: Boolean = false): TechButton {
+        val label = if (compact) Component.translatable("cph.download.install", results.size)
+        else Component.translatable("cph.download.install_missing")
         return TechButton.builder(label) { openBulkDownload() }
             .tooltip(Tooltip.create(Component.translatable("cph.requirements.install.hint")))
             .style(TechButtonStyle.PRIMARY).bounds(0, 0, compactButtonWidth(label, 86), 18).build().also {

@@ -213,6 +213,7 @@
   "cph.requirements.compact": "Свернуть",
   "cph.requirements.compact.hint": "Вернуться к компактному окну поверх главного меню.",
   "cph.requirements.install.hint": "Проверить доступные источники и установить поддерживаемые моды.",
+  "cph.requirements.more": "+ ещё %s",
   "cph.requirements.action.hint": "%s",
   "cph.history.title": "История установок",
   "cph.history.subtitle": "Активных записей об установке: %s",
