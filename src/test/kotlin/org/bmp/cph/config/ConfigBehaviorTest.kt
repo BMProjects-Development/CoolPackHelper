@@ -166,6 +166,13 @@ class ConfigBehaviorTest {
     }
 
     @Test
+    fun `backup batch limit is validated`() {
+        val config = PackHelperConfig(downloads = DownloadConfig(maxBackupBatches = 0), mods = emptyList())
+
+        assertTrue(ConfigValidator.validate(config).any { it.code == "invalid_backup_limit" })
+    }
+
+    @Test
     fun `project icon requires HTTPS`() {
         val config = PackHelperConfig(
             mods = listOf(

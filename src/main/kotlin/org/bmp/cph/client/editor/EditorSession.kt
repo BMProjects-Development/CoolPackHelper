@@ -5,6 +5,7 @@ import org.bmp.cph.config.ConfigManager
 import org.bmp.cph.config.DownloadLink
 import org.bmp.cph.config.MenuConfig
 import org.bmp.cph.config.PackHelperConfig
+import org.bmp.cph.config.ProjectDonationLink
 import org.bmp.cph.config.RequiredMod
 
 class EditorSession private constructor(val config: PackHelperConfig) {
@@ -63,5 +64,8 @@ class EditorSession private constructor(val config: PackHelperConfig) {
 internal fun RequiredMod.copyForEditor(): RequiredMod = copy(
     descriptions = descriptions?.toMutableMap(),
     authors = authors?.toMutableList(),
+    projectLinks = projectLinks?.copy(
+        donations = projectLinks?.donations?.map { ProjectDonationLink(it.label, it.url) }?.toMutableList(),
+    ),
     links = links?.map(DownloadLink::copy)?.toMutableList(),
 )

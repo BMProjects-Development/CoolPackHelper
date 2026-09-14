@@ -6,6 +6,7 @@ import net.minecraft.client.gui.screens.Screen
 import org.bmp.cph.config.LanguageConfig
 import org.bmp.cph.config.LanguageMode
 import org.bmp.cph.config.PackInfo
+import org.bmp.cph.config.DownloadConfig
 import org.bmp.cph.config.ShowPolicy
 
 class GeneralEditorScreen(
@@ -24,6 +25,7 @@ class GeneralEditorScreen(
     override fun init() {
         val config = session.config
         val pack = config.pack ?: PackInfo().also { config.pack = it }
+        val downloads = config.downloads ?: DownloadConfig().also { config.downloads = it }
         val language = session.ensureMenu().language ?: LanguageConfig().also { session.ensureMenu().language = it }
         val contentWidth = (width - 20).coerceAtMost(590)
         val left = (width - contentWidth) / 2
@@ -51,11 +53,14 @@ class GeneralEditorScreen(
         val buttonsY = firstY + 151
         val policyText = tr("general.policy", tr("policy.${config.resolvedShowPolicy().name.lowercase()}"))
         val languageText = tr("general.language_mode", tr("language.${languageMode().name.lowercase()}"))
-        var policyWidth = compactButtonWidth(policyText, 120, 245)
-        var languageWidth = compactButtonWidth(languageText, 120, 220)
-        if (policyWidth + languageWidth + 6 > contentWidth) {
-            policyWidth = (contentWidth - 6) / 2
-            languageWidth = contentWidth - policyWidth - 6
+        val backupsText = tr("general.backups", downloads.resolvedMaxBackupBatches())
+        var policyWidth = compactButtonWidth(policyText, 105, 220)
+        var languageWidth = compactButtonWidth(languageText, 105, 190)
+        var backupsWidth = compactButtonWidth(backupsText, 95, 170)
+        if (policyWidth + languageWidth + backupsWidth + 12 > contentWidth) {
+            policyWidth = (contentWidth - 12) / 3
+            languageWidth = policyWidth
+            backupsWidth = contentWidth - policyWidth - languageWidth - 12
         }
         addRenderableWidget(
             TechButton.builder(policyText) {
@@ -72,6 +77,17 @@ class GeneralEditorScreen(
                 rebuildWidgets()
             }.style(TechButtonStyle.SECONDARY)
                 .bounds(left + policyWidth + 6, buttonsY, languageWidth, 18).build()
+        )
+        addRenderableWidget(
+            TechButton.builder(backupsText) {
+                val choices = listOf(5, 10, 20, 50, 100)
+                val current = downloads.resolvedMaxBackupBatches()
+                downloads.maxBackupBatches = choices[(choices.indexOf(current).takeIf { it >= 0 } ?: 0).plus(1) % choices.size]
+                session.markDirty()
+                rebuildWidgets()
+            }.tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("general.backups.hint")))
+                .style(TechButtonStyle.SECONDARY)
+                .bounds(left + policyWidth + languageWidth + 12, buttonsY, backupsWidth, 18).build()
         )
         val back = TechButton.builder(tr("save_back")) { onClose() }.style(TechButtonStyle.PRIMARY)
             .bounds(0, 0, compactButtonWidth(tr("save_back"), 90), 18).build()

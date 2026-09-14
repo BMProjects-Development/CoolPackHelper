@@ -71,4 +71,18 @@ class DownloadSecurityTest {
         assertEquals(setOf("example"), inspected.modIds)
         assertEquals("1.2.3", inspected.versions["example"])
     }
+
+    @Test
+    fun `backup retention keeps complete newest batches`() {
+        val records = listOf(
+            InstallationRecord(id = "a1", batchId = "batch-a"),
+            InstallationRecord(id = "a2", batchId = "batch-a"),
+            InstallationRecord(id = "b1", batchId = "batch-b"),
+            InstallationRecord(id = "c1", batchId = "batch-c"),
+        )
+
+        val retained = InstallationJournal.retainedBatchIds(records, 2)
+
+        assertEquals(setOf("batch-b", "batch-c"), retained)
+    }
 }

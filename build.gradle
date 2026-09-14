@@ -11,6 +11,7 @@ group = mod_group_id
 
 repositories {
     mavenLocal()
+    mavenCentral()
     maven {
         name = 'Kotlin for Forge'
         url = 'https://thedarkcolour.github.io/KotlinForForge/'
@@ -104,6 +105,13 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 dependencies {
     implementation 'thedarkcolour:kotlinforforge-neoforge:5.3.0'
+    jarJar(implementation('org.sejda.imageio:webp-imageio')) {
+        version {
+            strictly '[0.1.6,0.2)'
+            prefer '0.1.6'
+        }
+    }
+    additionalRuntimeClasspath 'org.sejda.imageio:webp-imageio:0.1.6'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation 'com.google.code.gson:gson:2.11.0'

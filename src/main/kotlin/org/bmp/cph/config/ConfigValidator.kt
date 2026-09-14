@@ -24,8 +24,9 @@ data class ConfigIssue(
 }
 
 object ConfigValidator {
-    private val rootFields = setOf("\$schema", "schemaVersion", "pack", "showPolicy", "menu", "mods", "showOnlyOnce", "requiredMods")
+    private val rootFields = setOf("\$schema", "schemaVersion", "pack", "showPolicy", "downloads", "menu", "mods", "showOnlyOnce", "requiredMods")
     private val packFields = setOf("id", "name", "version")
+    private val downloadFields = setOf("maxBackupBatches")
     private val menuFields = setOf("language", "translations", "defaultLanguage")
     private val languageFields = setOf("mode", "fixedLanguage", "fallbackLanguage")
     private val menuTextFields = setOf(
@@ -53,6 +54,7 @@ object ConfigValidator {
         val rootObject = root.asJsonObject
         unknownFields(rootObject, rootFields, "")
         rootObject.objectAt("pack")?.let { unknownFields(it, packFields, "pack") }
+        rootObject.objectAt("downloads")?.let { unknownFields(it, downloadFields, "downloads") }
         rootObject.objectAt("menu")?.let { menu ->
             unknownFields(menu, menuFields, "menu")
             menu.objectAt("language")?.let { unknownFields(it, languageFields, "menu.language") }
@@ -93,6 +95,9 @@ object ConfigValidator {
             error("schemaVersion", "schema_newer", "value" to schema.toString(), "supported" to CONFIG_SCHEMA_VERSION.toString())
         }
         if (config.mods != null && config.requiredMods != null) error("mods", "both_mod_lists")
+        config.downloads?.maxBackupBatches?.let { value ->
+            if (value !in 1..100) error("downloads.maxBackupBatches", "invalid_backup_limit")
+        }
 
         if (config.showPolicy != null && ShowPolicy.entries.none { it.name.equals(config.showPolicy, ignoreCase = true) }) {
             error("showPolicy", "unknown_policy", "value" to config.showPolicy.orEmpty())

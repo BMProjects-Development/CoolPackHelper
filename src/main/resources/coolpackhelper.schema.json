@@ -11,6 +11,7 @@
     "showPolicy": {
       "enum": ["UNTIL_RESOLVED", "ONCE_PER_PACK_VERSION", "ONCE_EVER", "NEVER"]
     },
+    "downloads": { "$ref": "#/$defs/downloads" },
     "menu": { "$ref": "#/$defs/menu" },
     "mods": {
       "type": "array",
@@ -25,6 +26,13 @@
   },
   "required": ["schemaVersion", "showPolicy", "menu", "mods"],
   "$defs": {
+    "downloads": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxBackupBatches": { "type": "integer", "minimum": 1, "maximum": 100 }
+      }
+    },
     "pack": {
       "type": "object",
       "additionalProperties": false,

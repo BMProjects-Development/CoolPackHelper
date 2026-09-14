@@ -265,4 +265,6 @@ object ConfigManager {
 /** Local-only data. This file is deliberately stored outside config/ and is never exported. */
 data class AuthorSettings(
     var curseForgeApiKey: String? = null,
+    var translationEndpoint: String? = "https://libretranslate.com/translate",
+    var translationApiKey: String? = null,
 )

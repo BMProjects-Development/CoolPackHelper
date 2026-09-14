@@ -11,6 +11,7 @@ data class PackHelperConfig(
     var schemaVersion: Int? = null,
     var pack: PackInfo? = null,
     var showPolicy: String? = null,
+    var downloads: DownloadConfig? = DownloadConfig(),
     var menu: MenuConfig? = null,
     var mods: List<RequiredMod>? = null,
     // Schema v1 compatibility. New configs use showPolicy and mods.
@@ -23,6 +24,7 @@ data class PackHelperConfig(
             schemaVersion = CONFIG_SCHEMA_VERSION,
             pack = PackInfo(id = "my-pack", name = "My Modpack", version = "1.0.0"),
             showPolicy = ShowPolicy.UNTIL_RESOLVED.name,
+            downloads = DownloadConfig(),
             menu = MenuConfig.default(),
             mods = defaultExampleMods(),
         )
@@ -33,6 +35,12 @@ data class PackHelperConfig(
     fun resolvedShowPolicy(): ShowPolicy =
         ShowPolicy.entries.firstOrNull { it.name.equals(showPolicy, ignoreCase = true) }
             ?: if (showOnlyOnce == true) ShowPolicy.ONCE_EVER else ShowPolicy.UNTIL_RESOLVED
+}
+
+data class DownloadConfig(
+    var maxBackupBatches: Int? = 10,
+) {
+    fun resolvedMaxBackupBatches(): Int = (maxBackupBatches ?: 10).coerceIn(1, 100)
 }
 
 data class PackInfo(
@@ -497,6 +505,7 @@ private fun englishValidationMessages(): Map<String, String> = mapOf(
     "missing_link_label" to "The website domain will be used as the link label.",
     "empty_config" to "The config file is empty.",
     "config_too_large" to "The config exceeds the 8 MiB safety limit.",
+    "invalid_backup_limit" to "Keep between 1 and 100 installation backup batches.",
     "parse_error" to "Could not parse the config: {details}",
     "save_error" to "Could not save the config: {details}",
 )
@@ -528,6 +537,7 @@ private fun russianValidationMessages(): Map<String, String> = mapOf(
     "missing_link_label" to "В качестве подписи будет использован домен сайта.",
     "empty_config" to "Файл конфигурации пуст.",
     "config_too_large" to "Размер конфига превышает безопасный лимит 8 МиБ.",
+    "invalid_backup_limit" to "Количество хранимых пакетов резервных копий должно быть от 1 до 100.",
     "parse_error" to "Не удалось прочитать конфиг: {details}",
     "save_error" to "Не удалось сохранить конфиг: {details}",
 )

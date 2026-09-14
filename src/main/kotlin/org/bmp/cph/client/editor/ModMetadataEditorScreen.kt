@@ -143,8 +143,19 @@ private class MetadataImportScreen(
                 tr("metadata.import.preview.links", linkCount),
                 tr("metadata.import.preview.description", Component.translatable(if (metadata.summary.isNullOrBlank()) "options.off" else "options.on")),
             )
+            val previewLeft = dialog.left + 9
+            val previewTop = dialog.top + 44
+            val previewRight = dialog.right - 9
             lines.forEachIndexed { index, line ->
-                guiGraphics.drawString(font, font.plainSubstrByWidth(line.string, dialog.width - 30), dialog.left + 15, dialog.top + 58 + index * 22, if (index == 0) EditorTheme.TEXT else EditorTheme.TEXT_MUTED, false)
+                val rowTop = previewTop + index * 28
+                drawEditorRow(guiGraphics, previewLeft, rowTop, previewRight - previewLeft, 27, false)
+                val clipped = font.split(line, (previewRight - previewLeft - 18).coerceAtLeast(40)).firstOrNull()
+                clipped?.let {
+                    guiGraphics.drawString(
+                        font, it, previewLeft + 9, rowTop + 9,
+                        if (index == 0) EditorTheme.TEXT else EditorTheme.TEXT_MUTED, false,
+                    )
+                }
             }
         }
         errorMessage?.let {

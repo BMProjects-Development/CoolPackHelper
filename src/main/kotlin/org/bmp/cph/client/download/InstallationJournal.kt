@@ -3,6 +3,7 @@ package org.bmp.cph.client.download
 import com.google.gson.GsonBuilder
 import net.neoforged.fml.loading.FMLPaths
 import org.bmp.cph.Cph
+import org.bmp.cph.config.ConfigManager
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -31,7 +32,7 @@ object InstallationJournal {
     fun record(value: InstallationRecord) {
         val records = load().toMutableList()
         records += value
-        save(records.takeLast(500))
+        save(pruneBackups(records))
     }
 
     @Synchronized
@@ -91,6 +92,33 @@ object InstallationJournal {
             Files.move(temporary, journalPath, StandardCopyOption.REPLACE_EXISTING)
         }
     }
+
+    private fun pruneBackups(records: List<InstallationRecord>): List<InstallationRecord> {
+        val maximum = ConfigManager.config.downloads?.resolvedMaxBackupBatches() ?: 10
+        val retained = retainedBatchIds(records, maximum)
+        val removable = records.map(InstallationRecord::batchId).distinct().filterNot(retained::contains)
+        if (removable.isEmpty()) return records
+        val backupRoot = root.resolve("backups").toAbsolutePath().normalize()
+        val removed = mutableSetOf<String>()
+        removable.forEach { batchId ->
+            try {
+                val directory = backupRoot.resolve(batchId).normalize()
+                require(directory.startsWith(backupRoot) && directory != backupRoot)
+                if (Files.exists(directory)) {
+                    Files.walk(directory).use { paths ->
+                        paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+                    }
+                }
+                removed += batchId
+            } catch (exception: Exception) {
+                Cph.LOGGER.warn("Could not prune installation backup batch {}", batchId, exception)
+            }
+        }
+        return records.filterNot { it.batchId in removed }
+    }
+
+    internal fun retainedBatchIds(records: List<InstallationRecord>, maximum: Int): Set<String> =
+        records.map(InstallationRecord::batchId).filter(String::isNotBlank).distinct().takeLast(maximum.coerceAtLeast(1)).toSet()
 
     private fun sha256(path: Path): String {
         val digest = MessageDigest.getInstance("SHA-256")
