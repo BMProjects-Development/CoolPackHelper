@@ -3,6 +3,7 @@ package org.bmp.cph.client.editor
 import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import org.bmp.cph.client.curseforge.CurseForgeApiSupport
 import org.bmp.cph.config.ConfigManager
 import org.bmp.cph.config.DownloadLink
 import org.bmp.cph.config.DownloadSourceType
@@ -28,7 +29,6 @@ data class ProjectMetadata(
 )
 
 object ProjectMetadataService {
-    private const val USER_AGENT = "BMP/CoolPackHelper/1.0.0 (https://github.com/BMPixel/CoolPackHelper)"
     private const val MAX_API_RESPONSE_BYTES = 4 * 1024 * 1024
     private val gson = Gson()
     private val http = HttpClient.newBuilder()
@@ -93,7 +93,8 @@ object ProjectMetadataService {
     private fun fetchCurseForge(source: DownloadLink): ProjectMetadata {
         val id = source.projectId?.trim()?.takeIf { it.matches(Regex("^[0-9]+$")) }
             ?: error("Set the numeric CurseForge project ID first")
-        val key = ConfigManager.loadAuthorSettings().curseForgeApiKey?.takeIf(String::isNotBlank)
+        val key = CurseForgeApiSupport.normalizeKey(ConfigManager.loadAuthorSettings().curseForgeApiKey)
+            .takeIf(String::isNotBlank)
             ?: error("Configure a local CurseForge API key in the scan screen first")
         val project = getJson("https://api.curseforge.com/v1/mods/${encode(id)}", mapOf("x-api-key" to key))
             .asJsonObject.getAsJsonObject("data") ?: error("CurseForge returned no project metadata")
@@ -120,14 +121,18 @@ object ProjectMetadataService {
         val request = HttpRequest.newBuilder(URI.create(url))
             .timeout(Duration.ofSeconds(30))
             .header("Accept", "application/json")
-            .header("User-Agent", USER_AGENT)
+            .header("User-Agent", CurseForgeApiSupport.USER_AGENT)
             .apply { headers.forEach(::header) }
             .GET().build()
         val response = http.send(request, HttpResponse.BodyHandlers.ofInputStream())
         val bytes = response.body().use { it.readNBytes(MAX_API_RESPONSE_BYTES + 1) }
         require(bytes.size <= MAX_API_RESPONSE_BYTES) { "Metadata response is too large" }
         val body = String(bytes, StandardCharsets.UTF_8)
-        require(response.statusCode() in 200..299) { "Metadata request failed with HTTP ${response.statusCode()}" }
+        if (response.statusCode() !in 200..299) {
+            val isCurseForge = headers.keys.any { it.equals("x-api-key", ignoreCase = true) }
+            error(if (isCurseForge) CurseForgeApiSupport.error(response.statusCode(), body)
+            else "Metadata request failed with HTTP ${response.statusCode()}")
+        }
         return gson.fromJson(body, JsonElement::class.java)
     }
 

@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import net.neoforged.fml.loading.FMLPaths
 import org.bmp.cph.Cph
+import org.bmp.cph.client.curseforge.CurseForgeApiSupport
 import org.bmp.cph.config.ModCategory
 import org.bmp.cph.config.RequiredMod
 import org.bmp.cph.config.validHttpUri
@@ -184,7 +185,8 @@ object PlatformScanner {
     }
 
     private fun scanCurseForge(artifacts: List<LocalModArtifact>, apiKey: String): PlatformScanReport {
-        require(apiKey.isNotBlank()) { "CurseForge API key is required" }
+        val normalizedKey = CurseForgeApiSupport.normalizeKey(apiKey)
+        require(normalizedKey.isNotBlank()) { "CurseForge API key is required" }
         val unmatched = mutableSetOf<Long>()
         val matched = mutableMapOf<Long, String>()
         artifacts.chunked(100).forEach { chunk ->
@@ -194,7 +196,7 @@ object PlatformScanner {
             val response = sendJson(
                 "https://api.curseforge.com/v1/fingerprints/432",
                 body,
-                mapOf("x-api-key" to apiKey),
+                mapOf("x-api-key" to normalizedKey),
             ).getAsJsonObject("data") ?: error("CurseForge returned no data")
             response.getAsJsonArray("unmatchedFingerprints")?.forEach { unmatched += it.asLong }
             response.getAsJsonArray("exactMatches")?.forEach { element ->
@@ -226,14 +228,17 @@ object PlatformScanner {
             .timeout(Duration.ofSeconds(40))
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
+            .header("User-Agent", CurseForgeApiSupport.USER_AGENT)
             .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(body), StandardCharsets.UTF_8))
-        headers.forEach(builder::header)
+        headers.forEach(builder::setHeader)
         val response = http.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream())
         val bytes = response.body().use { it.readNBytes(MAX_API_RESPONSE_BYTES + 1) }
         require(bytes.size <= MAX_API_RESPONSE_BYTES) { "The platform response is too large" }
         val responseBody = String(bytes, StandardCharsets.UTF_8)
         if (response.statusCode() !in 200..299) {
-            error("HTTP ${response.statusCode()}: ${responseBody.take(240)}")
+            val isCurseForge = headers.keys.any { it.equals("x-api-key", ignoreCase = true) }
+            error(if (isCurseForge) CurseForgeApiSupport.error(response.statusCode(), responseBody)
+            else "HTTP ${response.statusCode()}: ${responseBody.take(240)}")
         }
         return gson.fromJson(responseBody, JsonObject::class.java)
     }

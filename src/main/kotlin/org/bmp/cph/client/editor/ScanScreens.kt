@@ -5,11 +5,14 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.EditBox
 import net.minecraft.client.gui.components.toasts.SystemToast
+import net.minecraft.client.gui.screens.ConfirmLinkScreen
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.Style
 import net.minecraft.util.FormattedCharSequence
 import org.bmp.cph.config.ConfigManager
+import org.bmp.cph.client.curseforge.CurseForgeApiSupport
+import java.net.URI
 import java.util.concurrent.CompletableFuture
 import kotlin.math.sin
 
@@ -35,9 +38,12 @@ class CurseForgeKeyScreen(
         )
         val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
             .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
+        val help = TechButton.builder(tr("curseforge.key.help")) { openKeyHelp() }
+            .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("curseforge.key.help.hint")))
+            .style(TechButtonStyle.GHOST).bounds(0, 0, compactButtonWidth(tr("curseforge.key.help"), 88), 18).build()
         val start = TechButton.builder(tr("scan.start")) { start() }.style(TechButtonStyle.PRIMARY)
             .bounds(0, 0, compactButtonWidth(tr("scan.start"), 80), 18).build()
-        addFooterActions(back, start)
+        addFooterActions(back, help, start)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -51,7 +57,7 @@ class CurseForgeKeyScreen(
     private fun rememberText() = tr(if (remember) "curseforge.remember.on" else "curseforge.remember.off")
 
     private fun start() {
-        val key = keyField.value.trim()
+        val key = CurseForgeApiSupport.normalizeKey(keyField.value)
         if (key.isBlank()) {
             Minecraft.getInstance().let {
                 SystemToast.add(it.toasts, SystemToast.SystemToastId.PERIODIC_NOTIFICATION, tr("curseforge.title"), tr("curseforge.key.required"))
@@ -60,6 +66,10 @@ class CurseForgeKeyScreen(
         }
         ConfigManager.saveAuthorSettings(ConfigManager.loadAuthorSettings().copy(curseForgeApiKey = if (remember) key else null))
         minecraft?.setScreen(ScanScreen(previousScreen, session, ScanPlatform.CURSEFORGE, key))
+    }
+
+    private fun openKeyHelp() {
+        ConfirmLinkScreen.confirmLinkNow(this, URI.create(CurseForgeApiSupport.API_KEY_HELP_URL), true)
     }
 }
 
@@ -94,18 +104,19 @@ class ScanScreen(
         val counts = ScanResultFilter.entries.associateWith { candidate -> completed.items.count(candidate::accepts) }
         val tabGap = 4
         val tabWidth = (w - tabGap * 3) / 4
+        val tabsY = if (completed.error == null) 53 else 66
         ScanResultFilter.entries.forEachIndexed { index, candidate ->
             addRenderableWidget(
                 TechButton.builder(tr("scan.filter.${candidate.name.lowercase()}", counts.getValue(candidate))) {
                     filter = candidate
                     rebuildWidgets()
                 }.style(if (filter == candidate) TechButtonStyle.PRIMARY else TechButtonStyle.GHOST)
-                    .bounds(x + index * (tabWidth + tabGap), 53, tabWidth, 18)
+                    .bounds(x + index * (tabWidth + tabGap), tabsY, tabWidth, 18)
                     .build()
             )
         }
         val visibleItems = completed.items.filter(filter::accepts)
-        val listTop = 76
+        val listTop = if (completed.error == null) 76 else 89
         val listBottom = height - 32
         val listWidth = (width - 16).coerceAtLeast(120)
         val list = StyledActionList(
@@ -158,7 +169,15 @@ class ScanScreen(
         importButton.active = selected.isNotEmpty()
         val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
             .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
-        addFooterActions(back, importButton)
+        val actions = mutableListOf(back)
+        if (platform == ScanPlatform.CURSEFORGE && completed.error != null) {
+            actions += TechButton.builder(tr("curseforge.key.help")) { openCurseForgeHelp() }
+                .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("curseforge.key.help.hint")))
+                .style(TechButtonStyle.GHOST)
+                .bounds(0, 0, compactButtonWidth(tr("curseforge.key.help"), 88), 18).build()
+        }
+        actions += importButton
+        addFooterActions(*actions.toTypedArray())
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -177,13 +196,12 @@ class ScanScreen(
         val unknown = completed.items.count { it.status == PlatformMatchStatus.UNKNOWN }
         drawHeader(guiGraphics, tr("scan.summary", found, missing, unknown))
         val notice = completed.error?.let(Component::literal) ?: tr("scan.exact_warning")
-        guiGraphics.drawCenteredString(
-            font,
-            font.plainSubstrByWidth(notice.string, (width - 32).coerceAtLeast(40)),
-            width / 2,
-            48,
-            if (completed.error == null) 0x75899D else 0xFFFF7777.toInt(),
-        )
+        font.split(notice, (width - 32).coerceAtLeast(40)).take(if (completed.error == null) 1 else 2).forEachIndexed { index, line ->
+            guiGraphics.drawCenteredString(
+                font, line, width / 2, 43 + index * 10,
+                if (completed.error == null) 0x75899D else 0xFFFF7777.toInt(),
+            )
+        }
     }
 
     override fun onClose() {
@@ -199,6 +217,10 @@ class ScanScreen(
             SystemToast.add(it.toasts, SystemToast.SystemToastId.PERIODIC_NOTIFICATION, tr("scan.imported"), tr("scan.imported.count", added))
         }
         onClose()
+    }
+
+    private fun openCurseForgeHelp() {
+        ConfirmLinkScreen.confirmLinkNow(this, URI.create(CurseForgeApiSupport.API_KEY_HELP_URL), true)
     }
 }
 

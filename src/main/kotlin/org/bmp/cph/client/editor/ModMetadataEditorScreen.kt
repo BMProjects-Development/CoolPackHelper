@@ -9,6 +9,7 @@ import net.minecraft.client.gui.components.MultiLineEditBox
 import net.minecraft.client.gui.components.toasts.SystemToast
 import net.minecraft.client.gui.components.events.GuiEventListener
 import net.minecraft.client.gui.narration.NarratableEntry
+import net.minecraft.client.gui.screens.ConfirmLinkScreen
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.Style
@@ -17,6 +18,8 @@ import org.bmp.cph.config.ConfigManager
 import org.bmp.cph.config.DownloadLink
 import org.bmp.cph.config.DownloadSourceType
 import org.bmp.cph.config.RequiredMod
+import org.bmp.cph.client.curseforge.CurseForgeApiSupport
+import java.net.URI
 
 class ModMetadataEditorScreen(parent: Screen, private val mod: RequiredMod, private val onChanged: () -> Unit = {}) :
     EditorScreenBase(tr("metadata.title"), parent) {
@@ -97,7 +100,15 @@ private class MetadataImportScreen(
         import.active = !loading
         val back = TechButton.builder(tr("back")) { onClose() }.style(TechButtonStyle.GHOST)
             .bounds(0, 0, compactButtonWidth(tr("back")), 18).build()
-        addCompactActions(dialog.left + 8, dialog.right - 8, dialog.bottom - 23, back, import)
+        val actions = mutableListOf(back)
+        if (type == DownloadSourceType.CURSEFORGE) {
+            actions += TechButton.builder(tr("curseforge.key.help")) { openKeyHelp() }
+                .tooltip(net.minecraft.client.gui.components.Tooltip.create(tr("curseforge.key.help.hint")))
+                .style(TechButtonStyle.GHOST)
+                .bounds(0, 0, compactButtonWidth(tr("curseforge.key.help"), 88), 18).build()
+        }
+        actions += import
+        addCompactActions(dialog.left + 8, dialog.right - 8, dialog.bottom - 23, *actions.toTypedArray())
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -105,13 +116,9 @@ private class MetadataImportScreen(
         guiGraphics.drawString(font, tr("metadata.import.project.${type.name.lowercase()}"), projectField.x, projectField.y - 11, 0x90A7BC, false)
         keyField?.let { guiGraphics.drawString(font, tr("curseforge.key"), it.x, it.y - 11, 0x90A7BC, false) }
         errorMessage?.let {
-            guiGraphics.drawCenteredString(
-                font,
-                font.plainSubstrByWidth(it, (dialog.width - 24).coerceAtLeast(40)),
-                width / 2,
-                dialog.bottom - 40,
-                0xFFFF7777.toInt(),
-            )
+            font.split(Component.literal(it), (dialog.width - 24).coerceAtLeast(40)).take(2).forEachIndexed { index, line ->
+                guiGraphics.drawCenteredString(font, line, width / 2, dialog.bottom - 51 + index * 10, 0xFFFF7777.toInt())
+            }
         }
     }
 
@@ -119,7 +126,7 @@ private class MetadataImportScreen(
         val project = projectValue.trim()
         if (project.isBlank() || loading) return
         if (type == DownloadSourceType.CURSEFORGE) {
-            val key = keyValue.trim()
+            val key = CurseForgeApiSupport.normalizeKey(keyValue)
             if (key.isNotBlank()) ConfigManager.saveAuthorSettings(ConfigManager.loadAuthorSettings().copy(curseForgeApiKey = key))
         }
         val existingIndex = mod.links.orEmpty().indexOfFirst { it.resolvedType() == type }
@@ -156,6 +163,10 @@ private class MetadataImportScreen(
                 }
             }
         }
+    }
+
+    private fun openKeyHelp() {
+        ConfirmLinkScreen.confirmLinkNow(this, URI.create(CurseForgeApiSupport.API_KEY_HELP_URL), true)
     }
 
     override fun onClose() {

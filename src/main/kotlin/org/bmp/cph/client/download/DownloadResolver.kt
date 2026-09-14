@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import org.bmp.cph.Cph
+import org.bmp.cph.client.curseforge.CurseForgeApiSupport
 import org.bmp.cph.config.ConfigManager
 import org.bmp.cph.config.DownloadLink
 import org.bmp.cph.config.DownloadSourceType
@@ -21,7 +22,6 @@ import java.time.Duration
 import java.util.concurrent.CompletableFuture
 
 object DownloadResolver {
-    private const val USER_AGENT = "BMP/CoolPackHelper/1.0.0"
     private const val MAX_API_RESPONSE_BYTES = 4 * 1024 * 1024
     private val gson = Gson()
     private val http = HttpClient.newBuilder()
@@ -114,7 +114,8 @@ object DownloadResolver {
         }
         val projectId = source.projectId?.takeIf(String::isNotBlank)
         val fileId = source.fileId?.takeIf(String::isNotBlank) ?: source.versionId?.takeIf(String::isNotBlank)
-        val apiKey = ConfigManager.loadAuthorSettings().curseForgeApiKey?.takeIf(String::isNotBlank)
+        val apiKey = CurseForgeApiSupport.normalizeKey(ConfigManager.loadAuthorSettings().curseForgeApiKey)
+            .takeIf(String::isNotBlank)
         if (projectId == null || fileId == null || apiKey == null) {
             return pageOnly(mod, source, "CurseForge automatic download requires project ID, file ID, and a locally configured API key")
         }
@@ -249,7 +250,7 @@ object DownloadResolver {
         val request = HttpRequest.newBuilder(URI.create(url))
             .timeout(Duration.ofSeconds(30))
             .header("Accept", "application/json")
-            .header("User-Agent", USER_AGENT)
+            .header("User-Agent", CurseForgeApiSupport.USER_AGENT)
             .apply { headers.forEach(::header) }
             .GET()
             .build()
@@ -257,7 +258,11 @@ object DownloadResolver {
         val bytes = response.body().use { it.readNBytes(MAX_API_RESPONSE_BYTES + 1) }
         require(bytes.size <= MAX_API_RESPONSE_BYTES) { "The API response is too large" }
         val body = String(bytes, StandardCharsets.UTF_8)
-        require(response.statusCode() in 200..299) { "HTTP ${response.statusCode()}: ${body.take(180)}" }
+        if (response.statusCode() !in 200..299) {
+            val isCurseForge = headers.keys.any { it.equals("x-api-key", ignoreCase = true) }
+            error(if (isCurseForge) CurseForgeApiSupport.error(response.statusCode(), body)
+            else "HTTP ${response.statusCode()}: ${body.take(180)}")
+        }
         return gson.fromJson(body, JsonElement::class.java)
     }
 

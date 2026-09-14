@@ -129,14 +129,20 @@ internal class StableEditBox(
         val border = if (isFocused) EditorTheme.ACCENT else EditorTheme.BORDER
         drawRoundedOutline(graphics, x, y, x + width, y + height, 4, border, 0xFF14161A.toInt())
         val originalX = x
+        val originalY = y
         val originalWidth = width
         graphics.enableScissor(clipLeft, clipTop, clipRight, clipBottom)
         try {
             x += 5
+            // Unbordered vanilla EditBox anchors text to its top edge. Our
+            // custom field still needs the same optical centering as a
+            // bordered vanilla control.
+            y += ((height - 8) / 2).coerceAtLeast(0)
             width = (width - 10).coerceAtLeast(4)
             super.renderWidget(graphics, mouseX, mouseY, partialTick)
         } finally {
             x = originalX
+            y = originalY
             width = originalWidth
             graphics.disableScissor()
         }
@@ -152,10 +158,21 @@ internal class StableMultiLineEditBox(
     placeholder: Component,
     message: Component,
 ) : MultiLineEditBox(font, x, y, width, height, placeholder, message) {
-    override fun renderBackground(graphics: GuiGraphics) {
+    override fun renderWidget(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         val border = if (isFocused) EditorTheme.ACCENT else EditorTheme.BORDER
         drawRoundedOutline(graphics, x, y, x + width, y + height, 4, border, 0xFF14161A.toInt())
+        // AbstractScrollWidget clips at the outermost pixel. Tighten that
+        // viewport so glyphs, selection and the cursor cannot touch or cross
+        // the rounded top and bottom borders.
+        graphics.enableScissor(x + 2, y + 3, x + width - 2, y + height - 3)
+        try {
+            super.renderWidget(graphics, mouseX, mouseY, partialTick)
+        } finally {
+            graphics.disableScissor()
+        }
     }
+
+    override fun renderBackground(graphics: GuiGraphics) = Unit
 
     override fun renderBorder(graphics: GuiGraphics, x: Int, y: Int, width: Int, height: Int) = Unit
 }
