@@ -14,6 +14,9 @@ import org.bmp.cph.client.ProjectIconCache
 
 data class RowBadge(val text: Component, val color: Int)
 
+/** Compact, brand-coloured mark rendered at the leading edge of a row. */
+data class RowMark(val text: Component, val color: Int)
+
 data class RowAction(
     val label: () -> Component,
     val width: Int = 66,
@@ -36,6 +39,7 @@ class StyledActionList<T>(
     private val accentOf: (T) -> Int = { 0xFF62D9FF.toInt() },
     private val badgeOf: (T) -> RowBadge? = { null },
     private val iconOf: (T) -> String? = { null },
+    private val markOf: (T) -> RowMark? = { null },
     private val actionsOf: (T) -> List<RowAction> = { emptyList() },
     private val onRowClick: ((T) -> Unit)? = null,
     private val rowClickable: (T) -> Boolean = { true },
@@ -98,7 +102,10 @@ class StyledActionList<T>(
             val rowActionWidth = if (rowButton == null) 0 else 12
             val iconUrl = iconOf(value)
             val iconSize = if (iconUrl.isNullOrBlank()) 0 else (height - 10).coerceIn(16, 30)
-            val textX = left + 15 + if (iconSize == 0) 0 else iconSize + 7
+            val mark = markOf(value).takeIf { iconSize == 0 }
+            val markSize = if (mark == null) 0 else (height - 10).coerceIn(18, 28)
+            val leadingSize = maxOf(iconSize, markSize)
+            val textX = left + 15 + if (leadingSize == 0) 0 else leadingSize + 7
             if (iconSize > 0) {
                 val iconX = left + 14
                 val iconY = top + (height - 2 - iconSize) / 2
@@ -109,6 +116,21 @@ class StyledActionList<T>(
                         icon.width, icon.height, icon.width, icon.height,
                     )
                 }
+            }
+            mark?.let {
+                val markX = left + 14
+                val markY = top + (height - 2 - markSize) / 2
+                drawRoundedOutline(
+                    guiGraphics,
+                    markX,
+                    markY,
+                    markX + markSize,
+                    markY + markSize,
+                    5,
+                    it.color,
+                    0xFF202329.toInt(),
+                )
+                guiGraphics.drawCenteredString(font, it.text, markX + markSize / 2, markY + (markSize - 8) / 2, it.color)
             }
             val textWidth = (width - (textX - left) - totalActionsWidth - badgeWidth - rowActionWidth - 18).coerceAtLeast(24)
             guiGraphics.drawString(font, font.plainSubstrByWidth(titleOf(value), textWidth), textX, top + 7, 0xE7F3FF, false)

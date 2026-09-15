@@ -3,26 +3,33 @@ package org.bmp.cph.client
 import com.mojang.blaze3d.vertex.Tesselator
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
-import net.minecraft.client.gui.narration.NarrationElementOutput
-import net.minecraft.client.gui.narration.NarratableEntry
 import net.minecraft.client.gui.components.Tooltip
+import net.minecraft.client.gui.narration.NarratableEntry
+import net.minecraft.client.gui.narration.NarrationElementOutput
 import net.minecraft.client.gui.screens.ConfirmLinkScreen
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import net.minecraft.util.FormattedCharSequence
 import net.neoforged.neoforge.client.gui.widget.ScrollPanel
-import org.bmp.cph.config.ResolvedMenuText
 import org.bmp.cph.client.download.SecureDownloadScreen
-import org.bmp.cph.client.editor.EditorScreenBase
 import org.bmp.cph.client.editor.EditorRect
-import org.bmp.cph.client.editor.RowAction
+import org.bmp.cph.client.editor.EditorScreenBase
+import org.bmp.cph.client.editor.EditorTheme
 import org.bmp.cph.client.editor.RowBadge
+import org.bmp.cph.client.editor.RowMark
 import org.bmp.cph.client.editor.StyledActionList
 import org.bmp.cph.client.editor.TechButton
 import org.bmp.cph.client.editor.TechButtonStyle
+import org.bmp.cph.client.editor.drawRoundedOutline
+import org.bmp.cph.client.editor.fillRoundedRect
+import org.bmp.cph.config.DownloadLink
+import org.bmp.cph.config.DownloadSourceType
+import org.bmp.cph.config.ModCategory
 import org.bmp.cph.config.RequiredMod
+import org.bmp.cph.config.ResolvedMenuText
 import org.bmp.cph.config.validHttpUri
 import java.net.URI
+import kotlin.math.min
 
 class ModDetailsScreen(
     parent: Screen,
@@ -32,94 +39,183 @@ class ModDetailsScreen(
     Component.literal(text.detailsTitle.replace("{mod}", result.mod.displayName())),
     parent,
 ) {
-    private var panelLeft = 0
-    private var panelTop = 54
-    private var panelWidth = 0
-    private var panelBottom = 100
+    private var hero = EditorRect(0, 0, 0, 0)
+    private var descriptionPanel = EditorRect(0, 0, 0, 0)
+    private var resourcesPanel = EditorRect(0, 0, 0, 0)
+    private var resources: List<DetailResource> = emptyList()
 
     override fun init() {
-        val contentWidth = (width - 24).coerceIn(120, 720)
-        val left = (width - contentWidth) / 2
-        val top = 41
-        val footerTop = height - 30
-        panelLeft = left
-        panelTop = top
-        panelWidth = contentWidth
-        panelBottom = footerTop
+        val contentWidth = (width - 20).coerceAtLeast(220).coerceAtMost(780)
+        val contentLeft = (width - contentWidth) / 2
+        val contentBottom = (height - 31).coerceAtLeast(118)
+        val heroHeight = if (height < 270) 58 else 70
+        hero = EditorRect(contentLeft, 40, contentLeft + contentWidth, 40 + heroHeight)
+
+        val bodyTop = hero.bottom + 7
+        val bodyHeight = (contentBottom - bodyTop).coerceAtLeast(40)
+        val stacked = contentWidth < 560 && bodyHeight >= 118
+        if (stacked) {
+            val gap = 7
+            val resourceHeight = (bodyHeight * .42f).toInt().coerceAtLeast(48)
+            val descriptionHeight = (bodyHeight - resourceHeight - gap).coerceAtLeast(48)
+            descriptionPanel = EditorRect(contentLeft, bodyTop, contentLeft + contentWidth, bodyTop + descriptionHeight)
+            resourcesPanel = EditorRect(contentLeft, descriptionPanel.bottom + gap, contentLeft + contentWidth, contentBottom)
+        } else {
+            val gap = 7
+            val resourceWidth = if (contentWidth >= 560) {
+                (contentWidth * .34f).toInt().coerceIn(210, 255)
+            } else {
+                (contentWidth * .42f).toInt().coerceAtLeast(92)
+            }
+            descriptionPanel = EditorRect(contentLeft, bodyTop, contentLeft + contentWidth - resourceWidth - gap, contentBottom)
+            resourcesPanel = EditorRect(descriptionPanel.right + gap, bodyTop, contentLeft + contentWidth, contentBottom)
+        }
+
+        val detailsTop = descriptionPanel.top + 25
+        val detailsHeight = (descriptionPanel.bottom - detailsTop - 5).coerceAtLeast(28)
         addRenderableWidget(
             DetailsPanel(
                 minecraft ?: Minecraft.getInstance(),
-                contentWidth,
-                (footerTop - top).coerceAtLeast(44),
-                top,
-                left,
-                detailsLines(contentWidth - if (result.mod.iconUrl.isNullOrBlank()) 20 else 68),
-                result.mod.iconUrl,
+                descriptionPanel.width - 4,
+                detailsHeight,
+                detailsTop,
+                descriptionPanel.left + 2,
+                detailsLines((descriptionPanel.width - 22).coerceAtLeast(40)),
             )
         )
 
+        resources = detailResources(
+            result.mod,
+            result.mod.localizedDescription(text.languageCode, text.fallbackLanguage),
+        )
+        val resourceTop = resourcesPanel.top + 25
+        val resourceHeight = resourcesPanel.bottom - resourceTop - 5
+        if (resources.isNotEmpty() && resourceHeight >= 28) {
+            StyledActionList(
+                minecraft ?: Minecraft.getInstance(),
+                resourcesPanel.width - 4,
+                resourceHeight,
+                resourceTop,
+                (resourcesPanel.width - 12).coerceAtLeast(76),
+                42,
+                resources,
+                titleOf = { it.title.string },
+                subtitleOf = { it.shortAddress },
+                accentOf = { it.brand.color },
+                badgeOf = { RowBadge(Component.literal(if (it.download == null) "↗" else "↓"), it.brand.color) },
+                markOf = { RowMark(Component.literal(it.brand.mark), it.brand.color) },
+                onRowClick = ::openResource,
+                rowTooltipOf = { Component.translatable("cph.mod_details.open.hint", it.url) },
+            ).also {
+                it.x = resourcesPanel.left + 2
+                addRenderableWidget(it)
+            }
+        }
+
         val downloadText = Component.literal(downloadLabel())
         val downloadButton = TechButton.builder(downloadText) { openDownload() }
-                .style(TechButtonStyle.PRIMARY)
-                .tooltip(Tooltip.create(Component.literal(result.mod.availableLinks().joinToString("\n") { it.displayLabel() })))
-                .bounds(0, 0, compactButtonWidth(downloadText, 78), 18)
-                .build()
-        downloadButton.active = result.mod.availableLinks().isNotEmpty()
+            .style(TechButtonStyle.PRIMARY)
+            .tooltip(Tooltip.create(Component.literal(result.mod.availableLinks().joinToString("\n") { it.displayLabel() })))
+            .bounds(0, 0, compactButtonWidth(downloadText, 78), 18)
+            .build().also { it.active = result.mod.availableLinks().isNotEmpty() }
         val backText = Component.literal(text.backButton)
-        val back = TechButton.builder(backText) { onClose() }.style(TechButtonStyle.GHOST)
-            .bounds(0, 0, compactButtonWidth(backText), 18).build()
-        val projectLinks = projectLinkActions(result.mod)
-        val project = projectLinks.takeIf(List<*>::isNotEmpty)?.let {
-            val label = Component.translatable("cph.project_links.open", it.size)
-            TechButton.builder(label) { minecraft?.setScreen(ProjectLinksScreen(this, result.mod)) }.style(TechButtonStyle.GHOST)
-                .tooltip(Tooltip.create(Component.translatable("cph.project_links.open.hint")))
-                .bounds(0, 0, compactButtonWidth(label, 72), 18).build()
-        }
-        addFooterActions(*listOfNotNull(back, project, downloadButton).toTypedArray())
+        val back = TechButton.builder(backText) { onClose() }
+            .style(TechButtonStyle.GHOST)
+            .bounds(0, 0, compactButtonWidth(backText), 18)
+            .build()
+        addFooterActions(back, downloadButton)
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        drawHeader(guiGraphics)
-        drawPanel(guiGraphics, panelLeft, panelTop, panelLeft + panelWidth, panelBottom)
+        drawHeader(guiGraphics, Component.translatable("cph.mod_details.subtitle"))
+        drawPanel(guiGraphics, hero.left, hero.top, hero.right, hero.bottom)
+        drawPanel(guiGraphics, descriptionPanel.left, descriptionPanel.top, descriptionPanel.right, descriptionPanel.bottom)
+        drawPanel(guiGraphics, resourcesPanel.left, resourcesPanel.top, resourcesPanel.right, resourcesPanel.bottom)
+        renderHero(guiGraphics)
+        guiGraphics.drawString(font, Component.translatable("cph.mod_details.information"), descriptionPanel.left + 10, descriptionPanel.top + 9, EditorTheme.TEXT, false)
+        guiGraphics.drawString(font, Component.translatable("cph.mod_details.resources", resources.size), resourcesPanel.left + 10, resourcesPanel.top + 9, EditorTheme.TEXT, false)
+        if (resources.isEmpty()) {
+            guiGraphics.drawCenteredString(
+                font,
+                Component.translatable("cph.mod_details.resources.empty"),
+                (resourcesPanel.left + resourcesPanel.right) / 2,
+                (resourcesPanel.top + resourcesPanel.bottom) / 2,
+                EditorTheme.TEXT_MUTED,
+            )
+        }
     }
 
-    private fun detailsLines(maxWidth: Int): List<FormattedCharSequence> = buildList {
-        val status = when (result.status) {
-            RequirementStatus.MISSING -> text.missingStatus
-            RequirementStatus.WRONG_VERSION -> text.wrongVersionStatus
-                .replace("{installed}", result.installedVersion.orEmpty())
-                .replace("{required}", result.mod.versionRange.orEmpty())
+    private fun renderHero(guiGraphics: GuiGraphics) {
+        val iconSize = min(48, hero.height - 16).coerceAtLeast(28)
+        val iconX = hero.left + 11
+        val iconY = hero.top + (hero.height - iconSize) / 2
+        drawRoundedOutline(guiGraphics, iconX, iconY, iconX + iconSize, iconY + iconSize, 7, EditorTheme.BORDER, 0xFF22252B.toInt())
+        val icon = ProjectIconCache.texture(result.mod.iconUrl)
+        if (icon != null) {
+            guiGraphics.blit(icon.location, iconX + 2, iconY + 2, iconSize - 4, iconSize - 4, 0f, 0f, icon.width, icon.height, icon.width, icon.height)
+        } else {
+            val initial = result.mod.displayName().trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+            guiGraphics.drawCenteredString(font, initial, iconX + iconSize / 2, iconY + iconSize / 2 - 4, EditorTheme.ACCENT)
         }
-        add(Component.literal(status).visualOrderText)
-        result.mod.modId?.takeIf { it.isNotBlank() }?.let {
-            add(Component.literal(text.modIdLabel.replace("{value}", it)).visualOrderText)
+
+        val textX = iconX + iconSize + 11
+        val nameWidth = (hero.right - 10 - textX).coerceAtLeast(30)
+        guiGraphics.drawString(font, font.plainSubstrByWidth(result.mod.displayName(), nameWidth), textX, hero.top + 11, EditorTheme.TEXT, false)
+
+        val category = result.mod.resolvedCategory()
+        val categoryText = if (category == ModCategory.REQUIRED) text.requiredLabel else text.recommendedLabel
+        val categoryColor = if (category == ModCategory.REQUIRED) 0xFFE46A6A.toInt() else 0xFFE0B85B.toInt()
+        val categoryWidth = drawChip(guiGraphics, categoryText, textX, hero.top + 27, categoryColor, nameWidth)
+        if (nameWidth - categoryWidth > 44) {
+            drawChip(guiGraphics, requirementStatus(), textX + categoryWidth + 5, hero.top + 27, EditorTheme.ACCENT, nameWidth - categoryWidth - 5)
         }
-        result.installedVersion?.takeIf { it.isNotBlank() }?.let {
-            add(Component.literal(text.installedVersionLabel.replace("{value}", it)).visualOrderText)
+
+        val identity = listOfNotNull(
+            result.mod.modId?.takeIf(String::isNotBlank),
+            result.mod.versionRange?.takeIf(String::isNotBlank)?.let { "v $it" },
+            result.mod.authors.orEmpty().filter(String::isNotBlank).takeIf(List<*>::isNotEmpty)?.joinToString(", "),
+        ).joinToString("  ·  ")
+        if (identity.isNotBlank() && hero.height >= 66) {
+            guiGraphics.drawString(font, font.plainSubstrByWidth(identity, nameWidth), textX, hero.top + 49, EditorTheme.TEXT_MUTED, false)
         }
-        result.mod.versionRange?.takeIf { it.isNotBlank() }?.let {
-            add(Component.literal(text.requiredVersionLabel.replace("{value}", it)).visualOrderText)
-        }
-        result.mod.authors.orEmpty().filter(String::isNotBlank).takeIf { it.isNotEmpty() }?.let { authors ->
-            font.split(Component.literal(text.authorsLabel.replace("{value}", authors.joinToString(", "))), maxWidth).forEach(::add)
-        }
-        result.mod.license?.takeIf(String::isNotBlank)?.let {
-            font.split(Component.literal(text.licenseLabel.replace("{value}", it)), maxWidth).forEach(::add)
-        }
-        result.mod.resolvedProjectLinks().homepage?.takeIf(String::isNotBlank)?.let {
-            font.split(Component.literal(text.projectPageLabel.replace("{value}", it)), maxWidth).forEach(::add)
-        }
-        result.mod.availableLinks().takeIf(List<*>::isNotEmpty)?.let { links ->
-            links.forEach { link ->
-                val target = link.downloadUrl?.takeIf(String::isNotBlank) ?: link.url.orEmpty()
-                font.split(Component.literal("${link.displayLabel()}: $target"), maxWidth).forEach(::add)
-            }
-        }
-        add(Component.empty().visualOrderText)
+    }
+
+    private fun drawChip(guiGraphics: GuiGraphics, value: String, x: Int, y: Int, color: Int, maxWidth: Int): Int {
+        val label = font.plainSubstrByWidth(value, (maxWidth - 12).coerceAtLeast(10))
+        val chipWidth = (font.width(label) + 12).coerceAtMost(maxWidth)
+        fillRoundedRect(guiGraphics, x, y, x + chipWidth, y + 16, 5, 0xFF24272D.toInt())
+        guiGraphics.drawString(font, label, x + 6, y + 4, color, false)
+        return chipWidth
+    }
+
+    private fun detailsLines(maxWidth: Int): List<DetailLine> = buildList {
+        add(DetailLine(Component.translatable("cph.mod_details.description").visualOrderText, EditorTheme.ACCENT, 14))
         val description = result.mod.localizedDescription(text.languageCode, text.fallbackLanguage)
-        font.split(Component.literal(description), maxWidth.coerceAtLeast(40)).forEach {
-            add(it)
+        val descriptionText = description.takeIf(String::isNotBlank)
+            ?: Component.translatable("cph.mod_details.description.empty").string
+        font.split(Component.literal(descriptionText), maxWidth).forEach { add(DetailLine(it, EditorTheme.TEXT, 11)) }
+        add(DetailLine(Component.empty().visualOrderText, EditorTheme.TEXT, 8))
+        add(DetailLine(Component.translatable("cph.mod_details.technical").visualOrderText, EditorTheme.ACCENT_PURPLE, 14))
+        detailValues().forEach { value ->
+            font.split(Component.literal(value), maxWidth).forEach { add(DetailLine(it, EditorTheme.TEXT_MUTED, 11)) }
         }
+    }
+
+    private fun detailValues(): List<String> = buildList {
+        result.mod.modId?.takeIf(String::isNotBlank)?.let { add(text.modIdLabel.replace("{value}", it)) }
+        result.installedVersion?.takeIf(String::isNotBlank)?.let { add(text.installedVersionLabel.replace("{value}", it)) }
+        result.mod.versionRange?.takeIf(String::isNotBlank)?.let { add(text.requiredVersionLabel.replace("{value}", it)) }
+        result.mod.authors.orEmpty().filter(String::isNotBlank).takeIf(List<*>::isNotEmpty)?.let {
+            add(text.authorsLabel.replace("{value}", it.joinToString(", ")))
+        }
+        result.mod.license?.takeIf(String::isNotBlank)?.let { add(text.licenseLabel.replace("{value}", it)) }
+    }
+
+    private fun requirementStatus(): String = when (result.status) {
+        RequirementStatus.MISSING -> text.missingStatus
+        RequirementStatus.WRONG_VERSION -> text.wrongVersionStatus
+            .replace("{installed}", result.installedVersion.orEmpty())
+            .replace("{required}", result.mod.versionRange.orEmpty())
     }
 
     private fun downloadLabel(): String {
@@ -136,37 +232,29 @@ class ModDetailsScreen(
         }
     }
 
+    private fun openResource(resource: DetailResource) {
+        resource.download?.let {
+            minecraft?.setScreen(SecureDownloadScreen.forSource(this, result, it))
+            return
+        }
+        ConfirmLinkScreen.confirmLinkNow(this, URI.create(resource.url), true)
+    }
+
     private class DetailsPanel(
         minecraft: Minecraft,
         width: Int,
         height: Int,
         top: Int,
         left: Int,
-        private val lines: List<FormattedCharSequence>,
-        private val iconUrl: String?,
+        private val lines: List<DetailLine>,
     ) : ScrollPanel(minecraft, width, height, top, left) {
-        override fun getContentHeight(): Int = (lines.size * 12 + 12).coerceAtLeast(height - 8)
+        override fun getContentHeight(): Int = (lines.sumOf(DetailLine::height) + 10).coerceAtLeast(height - 8)
 
-        override fun drawPanel(
-            guiGraphics: GuiGraphics,
-            entryRight: Int,
-            relativeY: Int,
-            tess: Tesselator,
-            mouseX: Int,
-            mouseY: Int,
-        ) {
-            val textLeft = left + if (iconUrl.isNullOrBlank()) 8 else 56
-            if (!iconUrl.isNullOrBlank()) {
-                guiGraphics.fill(left + 8, relativeY + 6, left + 48, relativeY + 46, 0x80303A49.toInt())
-                ProjectIconCache.texture(iconUrl)?.let { icon ->
-                    guiGraphics.blit(
-                        icon.location, left + 8, relativeY + 6, 40, 40, 0f, 0f,
-                        icon.width, icon.height, icon.width, icon.height,
-                    )
-                }
-            }
-            lines.forEachIndexed { index, line ->
-                guiGraphics.drawString(Minecraft.getInstance().font, line, textLeft, relativeY + 6 + index * 12, 0xD8D8D8, false)
+        override fun drawPanel(guiGraphics: GuiGraphics, entryRight: Int, relativeY: Int, tess: Tesselator, mouseX: Int, mouseY: Int) {
+            var y = relativeY + 5
+            lines.forEach { line ->
+                guiGraphics.drawString(Minecraft.getInstance().font, line.text, left + 8, y, line.color, false)
+                y += line.height
             }
         }
 
@@ -176,65 +264,95 @@ class ModDetailsScreen(
     }
 }
 
-private data class ProjectLinkAction(val label: Component, val url: String)
+private data class DetailLine(val text: FormattedCharSequence, val color: Int, val height: Int)
 
-private fun projectLinkActions(mod: RequiredMod): List<ProjectLinkAction> = buildList {
-    val links = mod.resolvedProjectLinks()
-    fun addLink(key: String, url: String?) {
-        validHttpUri(url)?.let { add(ProjectLinkAction(Component.translatable("cph.project_links.$key"), it.toString())) }
-    }
-    addLink("homepage", links.homepage)
-    addLink("source", links.source)
-    addLink("issues", links.issues)
-    addLink("wiki", links.wiki)
-    addLink("discord", links.discord)
-    links.donations.orEmpty().forEach { donation ->
-        validHttpUri(donation.url)?.let {
-            add(ProjectLinkAction(
-                donation.label?.takeIf(String::isNotBlank)?.let(Component::literal)
-                    ?: Component.translatable("cph.project_links.donation"),
-                it.toString(),
-            ))
+private data class ResourceBrand(val name: String, val mark: String, val color: Int)
+
+private data class DetailResource(
+    val title: Component,
+    val url: String,
+    val brand: ResourceBrand,
+    val download: DownloadLink? = null,
+) {
+    val shortAddress: String = runCatching {
+        val uri = URI.create(url)
+        buildString {
+            append(uri.host?.removePrefix("www.") ?: url)
+            uri.path?.takeIf { it != "/" }?.let(::append)
         }
+    }.getOrDefault(url)
+}
+
+private fun detailResources(mod: RequiredMod, localizedDescription: String): List<DetailResource> = buildList {
+    val links = mod.resolvedProjectLinks()
+    fun addProject(key: String, url: String?, fallback: ResourceBrand) {
+        val uri = validHttpUri(url) ?: return
+        val brand = resourceBrand(uri.host, fallback)
+        val semantic = Component.translatable("cph.project_links.$key")
+        val label = when {
+            key == "discord" -> Component.literal("Discord")
+            brand.name.isBlank() -> semantic
+            else -> Component.translatable("cph.mod_details.branded_link", brand.name, semantic)
+        }
+        add(DetailResource(label, uri.toString(), brand))
     }
-}.distinctBy { it.url }
-
-private class ProjectLinksScreen(parent: Screen, private val mod: RequiredMod) :
-    EditorScreenBase(Component.translatable("cph.project_links.title", mod.displayName()), parent) {
-    private var dialog = EditorRect(0, 0, 0, 0)
-
-    override fun usesModalBackground(): Boolean = true
-
-    override fun init() {
-        dialog = centeredModal(620, 330, 170)
-        val actions = projectLinkActions(mod)
-        val listWidth = (dialog.width - 12).coerceAtLeast(120)
-        val list = StyledActionList(
-            minecraft ?: Minecraft.getInstance(),
-            listWidth,
-            (dialog.height - 70).coerceAtLeast(38),
-            dialog.top + 38,
-            (listWidth - 10).coerceAtLeast(100),
-            36,
-            actions,
-            titleOf = { it.label.string },
-            subtitleOf = { it.url },
-            accentOf = { 0xFF58C7E8.toInt() },
-            badgeOf = { RowBadge(Component.literal("↗"), 0xFF78D8F4.toInt()) },
-            actionsOf = { action -> listOf(
-                RowAction(label = { Component.translatable("cph.project_links.open_action") }, width = 58) {
-                    ConfirmLinkScreen.confirmLinkNow(this, URI.create(action.url), true)
-                },
-            ) },
-        )
-        list.x = dialog.left + 6
-        addRenderableWidget(list)
-        val back = TechButton.builder(Component.translatable("cph.editor.back")) { onClose() }
-            .style(TechButtonStyle.GHOST).bounds(0, 0, 72, 18).build()
-        addCompactActions(dialog.left + 8, dialog.right - 8, dialog.bottom - 23, back)
+    addProject("homepage", links.homepage, ResourceBrand("", "WEB", 0xFF58C7E8.toInt()))
+    addProject("source", links.source, ResourceBrand("", "SRC", 0xFFA795C8.toInt()))
+    addProject("issues", links.issues, ResourceBrand("", "!", 0xFFE0B85B.toInt()))
+    addProject("wiki", links.wiki, ResourceBrand("", "W", 0xFF63C7B2.toInt()))
+    addProject("discord", links.discord, ResourceBrand("Discord", "DS", 0xFF7289DA.toInt()))
+    links.donations.orEmpty().forEach { donation ->
+        val uri = validHttpUri(donation.url) ?: return@forEach
+        val brand = resourceBrand(uri.host, ResourceBrand("", "$", 0xFFE788B7.toInt()))
+        val label = donation.label?.takeIf(String::isNotBlank)?.let(Component::literal)
+            ?: brand.name.takeIf(String::isNotBlank)?.let(Component::literal)
+            ?: Component.translatable("cph.project_links.donation")
+        add(DetailResource(label, uri.toString(), brand))
     }
+    mod.availableLinks().forEach { download ->
+        val target = download.downloadUrl?.takeIf(String::isNotBlank) ?: download.url
+        val uri = validHttpUri(target) ?: return@forEach
+        val brand = downloadBrand(download, uri.host)
+        val label = Component.translatable("cph.mod_details.download_source", brand.name.ifBlank { download.displayLabel() })
+        add(DetailResource(label, uri.toString(), brand, download))
+    }
+    DESCRIPTION_URL.findAll(localizedDescription).forEach { match ->
+        val uri = validHttpUri(match.value) ?: return@forEach
+        val brand = resourceBrand(uri.host, ResourceBrand("", "URL", 0xFF76AFC8.toInt()))
+        val semantic = Component.translatable("cph.mod_details.description_link")
+        val label = if (brand.name.isBlank()) semantic
+        else Component.translatable("cph.mod_details.branded_link", brand.name, semantic)
+        add(DetailResource(label, uri.toString(), brand))
+    }
+}.distinctBy { "${it.download != null}:${it.url}" }
 
-    override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        drawModalFrame(guiGraphics, dialog, Component.translatable("cph.project_links.subtitle"))
+private fun resourceBrand(hostValue: String?, fallback: ResourceBrand): ResourceBrand {
+    val host = hostValue.orEmpty().lowercase()
+    return when {
+        host == "discord.gg" || host.endsWith(".discord.com") || host == "discord.com" -> ResourceBrand("Discord", "DS", 0xFF7289DA.toInt())
+        host == "github.com" || host.endsWith(".github.com") -> ResourceBrand("GitHub", "GH", 0xFFB9C1CC.toInt())
+        host == "gitlab.com" || host.endsWith(".gitlab.com") -> ResourceBrand("GitLab", "GL", 0xFFF39B54.toInt())
+        host == "patreon.com" || host.endsWith(".patreon.com") -> ResourceBrand("Patreon", "P", 0xFFFF6B63.toInt())
+        host == "ko-fi.com" || host.endsWith(".ko-fi.com") -> ResourceBrand("Ko-fi", "K", 0xFF5BCBEA.toInt())
+        host == "buymeacoffee.com" || host.endsWith(".buymeacoffee.com") -> ResourceBrand("Buy Me a Coffee", "BMC", 0xFFFFD45C.toInt())
+        host == "boosty.to" || host.endsWith(".boosty.to") -> ResourceBrand("Boosty", "B", 0xFFF28A45.toInt())
+        host == "opencollective.com" || host.endsWith(".opencollective.com") -> ResourceBrand("Open Collective", "OC", 0xFF75A7FF.toInt())
+        host == "paypal.com" || host.endsWith(".paypal.com") || host == "paypal.me" -> ResourceBrand("PayPal", "PP", 0xFF66A9E8.toInt())
+        host == "youtube.com" || host.endsWith(".youtube.com") || host == "youtu.be" -> ResourceBrand("YouTube", "YT", 0xFFFF6464.toInt())
+        host == "reddit.com" || host.endsWith(".reddit.com") -> ResourceBrand("Reddit", "R", 0xFFFF784D.toInt())
+        host == "modrinth.com" || host.endsWith(".modrinth.com") -> ResourceBrand("Modrinth", "M", 0xFF55D991.toInt())
+        host == "curseforge.com" || host.endsWith(".curseforge.com") || host.endsWith(".forgecdn.net") -> ResourceBrand("CurseForge", "CF", 0xFFF16436.toInt())
+        host.contains("wiki") -> ResourceBrand("Wiki", "W", 0xFF63C7B2.toInt())
+        else -> fallback
     }
 }
+
+private fun downloadBrand(link: DownloadLink, host: String?): ResourceBrand = when (link.resolvedType()) {
+    DownloadSourceType.MODRINTH -> ResourceBrand("Modrinth", "M", 0xFF55D991.toInt())
+    DownloadSourceType.CURSEFORGE -> ResourceBrand("CurseForge", "CF", 0xFFF16436.toInt())
+    DownloadSourceType.GITHUB_RELEASE -> ResourceBrand("GitHub", "GH", 0xFFB9C1CC.toInt())
+    DownloadSourceType.DIRECT -> resourceBrand(host, ResourceBrand("", "DL", 0xFF76AFC8.toInt()))
+    DownloadSourceType.PAGE -> resourceBrand(host, ResourceBrand("", "WEB", 0xFF58C7E8.toInt()))
+}
+
+private val DESCRIPTION_URL = Regex("https?://[^\\s<>()]+", RegexOption.IGNORE_CASE)
