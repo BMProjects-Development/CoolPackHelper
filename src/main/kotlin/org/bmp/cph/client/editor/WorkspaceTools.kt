@@ -62,11 +62,8 @@ internal class MenuTranslationsWindow(workspace: EditorWorkspaceScreen) : Worksp
                 (rightWidth - 8).coerceAtLeast(100), TEXT_FIELDS, value,
             ) { dirty = true }.also { it.x = rightX; add(it) }
         }
-        button(tr("cancel"), bodyRight - 177, bodyBottom - 20, 78, { workspace.closeWindow(this) }, TechButtonStyle.GHOST)
-        button(tr("save"), bodyRight - 94, bodyBottom - 20, 90, {
-            apply()
-            workspace.saveConfiguration()
-        }, TechButtonStyle.PRIMARY, tr("workspace.save_window.hint"))
+        button(tr("close"), bodyRight - 177, bodyBottom - 20, 78, { workspace.closeWindow(this) }, TechButtonStyle.GHOST, tr("workspace.close_window.hint"))
+        button(tr("save"), bodyRight - 94, bodyBottom - 20, 90, ::apply, TechButtonStyle.PRIMARY, tr("workspace.save_window.hint"))
     }
 
     override fun renderBody(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {

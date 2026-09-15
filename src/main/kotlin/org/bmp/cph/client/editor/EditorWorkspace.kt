@@ -133,6 +133,7 @@ open class EditorWorkspaceScreen(
             guiGraphics.pose().translate(0.0f, 0.0f, (visibleWindows.size + 1) * WINDOW_LAYER_STEP)
             renderTaskbar(guiGraphics, mouseX, mouseY)
             renderStatus(guiGraphics)
+            renderWorkspaceActions(guiGraphics, mouseX, mouseY)
             if (exitConfirmation) renderExitConfirmation(guiGraphics, mouseX, mouseY)
             guiGraphics.flush()
         } finally {
@@ -160,7 +161,7 @@ open class EditorWorkspaceScreen(
         graphics.drawString(font, title, 8, 8, EditorTheme.TEXT, false)
         val packName = editorSession.config.pack?.name?.takeIf(String::isNotBlank) ?: tr("hub.untitled").string
         val packX = 8 + font.width(title) + 18
-        val available = width - font.width(statusText()) - 18 - packX
+        val available = statusLeft(statusText()) - 10 - packX
         if (available >= 24) {
             graphics.fill(packX - 9, 7, packX - 8, 17, EditorTheme.BORDER)
             graphics.drawString(font, font.plainSubstrByWidth(packName, available), packX, 8, EditorTheme.TEXT_MUTED, false)
@@ -220,12 +221,35 @@ open class EditorWorkspaceScreen(
     private fun renderStatus(graphics: GuiGraphics) {
         val status = statusText()
         val color = if (hasUnsavedChanges()) 0xFFD8B36A.toInt() else 0xFF86A891.toInt()
-        graphics.drawString(font, status, width - font.width(status) - 8, 8, color, false)
+        val left = statusLeft(status)
+        if (left > RAIL_WIDTH) graphics.drawString(font, status, left, 8, color, false)
     }
 
-    private fun statusText(): Component = if (hasUnsavedChanges()) tr("workspace.unsaved") else tr("workspace.saved")
+    private fun statusText(): Component = when {
+        windows.any(WorkspaceWindow::hasDraftChanges) -> tr("workspace.unsaved_windows")
+        editorSession.dirty -> tr("workspace.config_unsaved")
+        else -> tr("workspace.saved")
+    }
 
     private fun hasUnsavedChanges(): Boolean = editorSession.dirty || windows.any(WorkspaceWindow::hasDraftChanges)
+
+    private fun statusLeft(status: Component): Int = workspaceSaveRect().left - font.width(status) - 7
+
+    private fun renderWorkspaceActions(graphics: GuiGraphics, mouseX: Int, mouseY: Int) {
+        listOf(
+            Triple(workspaceSaveRect(), "✓", tr("workspace.save_config.hint")),
+            Triple(workspaceExitRect(), "×", tr("workspace.exit_action.hint")),
+        ).forEach { (rect, glyph, tooltip) ->
+            val hovered = !exitConfirmation && rect.contains(mouseX, mouseY)
+            drawRoundedOutline(
+                graphics, rect.left, rect.top, rect.right, rect.bottom, 4,
+                if (hovered) EditorTheme.ACCENT else EditorTheme.BORDER,
+                if (hovered) EditorTheme.SURFACE_HOVER else 0xFF17191D.toInt(),
+            )
+            graphics.drawCenteredString(font, glyph, (rect.left + rect.right) / 2, rect.top + 5, EditorTheme.TEXT)
+            if (hovered) setTooltipForNextRenderPass(tooltip)
+        }
+    }
 
     private fun renderExitConfirmation(graphics: GuiGraphics, mouseX: Int, mouseY: Int) {
         graphics.fill(0, 0, width, height, 0x99080A0D.toInt())
@@ -249,6 +273,14 @@ open class EditorWorkspaceScreen(
 
     override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
         if (exitConfirmation) return handleExitClick(mouseX.toInt(), mouseY.toInt(), button)
+        if (workspaceSaveRect().contains(mouseX, mouseY)) {
+            if (button == 0) saveConfiguration()
+            return true
+        }
+        if (workspaceExitRect().contains(mouseX, mouseY)) {
+            if (button == 0) onClose()
+            return true
+        }
         railItems().forEachIndexed { index, item ->
             if (railRect(index).contains(mouseX.toInt(), mouseY.toInt())) {
                 item.action(); return true
@@ -507,6 +539,7 @@ open class EditorWorkspaceScreen(
             activePointer is PointerOperation.Move -> WorkspaceCursor.MOVE
             activePointer is PointerOperation.Resize -> cursorForEdge((activePointer as PointerOperation.Resize).edge)
             railItems().indices.any { railRect(it).contains(mouseX, mouseY) } -> WorkspaceCursor.HAND
+            workspaceSaveRect().contains(mouseX, mouseY) || workspaceExitRect().contains(mouseX, mouseY) -> WorkspaceCursor.HAND
             taskbarHit(mouseX, mouseY) != null -> WorkspaceCursor.HAND
             else -> {
                 val window = windows.asReversed().firstOrNull { !it.minimized && it.contains(mouseX.toDouble(), mouseY.toDouble()) }
@@ -527,6 +560,10 @@ open class EditorWorkspaceScreen(
     private fun workArea(screenWidth: Int = width, screenHeight: Int = height) = EditorRect(
         RAIL_WIDTH + 4, TOP_HEIGHT + 4, max(RAIL_WIDTH + 64, screenWidth - 4), max(TOP_HEIGHT + 64, screenHeight - TASKBAR_HEIGHT - 4),
     )
+
+    private fun workspaceSaveRect() = EditorRect(width - 49, 4, width - 28, 22)
+
+    private fun workspaceExitRect() = EditorRect(width - 24, 4, width - 4, 22)
 
     private fun railRect(index: Int): EditorRect {
         val top = TOP_HEIGHT + 5 + index * 31
@@ -1165,7 +1202,7 @@ internal abstract class WorkspaceWindow(
             rebuild()
             return
         }
-        if (workspace.saveConfiguration()) workspace.removeWindow(this) else rebuild()
+        workspace.removeWindow(this)
     }
 
     protected fun field(x: Int, y: Int, width: Int, value: String, maxLength: Int = 4096, changed: (String) -> Unit): StableEditBox =
@@ -1192,7 +1229,7 @@ internal class OverviewWindow(workspace: EditorWorkspaceScreen) : WorkspaceWindo
         button(tr("mods"), bodyLeft + 5, y, buttonWidth, action = { workspace.openOrFocus("mods") { ModsWindow(workspace) } })
         button(tr("general"), bodyLeft + 10 + buttonWidth, y, buttonWidth, action = { workspace.openOrFocus("general") { GeneralWindow(workspace) } })
         button(tr("requirements"), bodyLeft + 5, y + 23, buttonWidth, workspace::previewRequirements, TechButtonStyle.GHOST)
-        button(tr("save"), bodyLeft + 10 + buttonWidth, y + 23, buttonWidth, { workspace.saveConfiguration() }, TechButtonStyle.PRIMARY)
+        button(tr("workspace.save_config"), bodyLeft + 10 + buttonWidth, y + 23, buttonWidth, { workspace.saveConfiguration() }, TechButtonStyle.PRIMARY, tr("workspace.save_config.hint"))
     }
 
     override fun renderBody(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -1279,11 +1316,8 @@ internal class GeneralWindow(workspace: EditorWorkspaceScreen) : WorkspaceWindow
             backups = choices[(choices.indexOf(backups).takeIf { it >= 0 } ?: 0).plus(1) % choices.size]; dirty = true; rebuild()
         }, tooltip = tr("general.backups.hint"))
         val footerY = bodyBottom - 20
-        button(tr("cancel"), bodyRight - 168, footerY, 78, { workspace.closeWindow(this) }, TechButtonStyle.GHOST)
-        button(tr("save"), bodyRight - 85, footerY, 81, {
-            apply()
-            workspace.saveConfiguration()
-        }, TechButtonStyle.PRIMARY, tr("workspace.save_window.hint"))
+        button(tr("close"), bodyRight - 168, footerY, 78, { workspace.closeWindow(this) }, TechButtonStyle.GHOST, tr("workspace.close_window.hint"))
+        button(tr("save"), bodyRight - 85, footerY, 81, ::apply, TechButtonStyle.PRIMARY, tr("workspace.save_window.hint"))
     }
 
     override fun renderBody(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -1440,11 +1474,8 @@ internal class ModDocumentWindow(
             Tab.LINKS -> buildLinks(contentTop, contentBottom)
             Tab.METADATA -> buildMetadata(contentTop, contentBottom)
         }
-        button(tr("cancel"), bodyRight - 177, bodyBottom - 20, 78, ::requestClose, TechButtonStyle.GHOST, tr("workspace.cancel.hint"))
-        button(tr("save"), bodyRight - 94, bodyBottom - 20, 90, {
-            apply()
-            workspace.saveConfiguration()
-        }, TechButtonStyle.PRIMARY, tr("workspace.save_window.hint"))
+        button(tr("close"), bodyRight - 177, bodyBottom - 20, 78, ::requestClose, TechButtonStyle.GHOST, tr("workspace.close_window.hint"))
+        button(tr("save"), bodyRight - 94, bodyBottom - 20, 90, ::apply, TechButtonStyle.PRIMARY, tr("workspace.save_window.hint"))
     }
 
     private fun buildGeneral(top: Int, bottom: Int) {
