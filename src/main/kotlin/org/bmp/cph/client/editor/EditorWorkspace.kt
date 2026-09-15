@@ -5,7 +5,10 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.AbstractWidget
 import net.minecraft.client.gui.components.EditBox
+import net.minecraft.client.gui.components.MultiLineEditBox
 import net.minecraft.client.gui.components.Tooltip
+import net.minecraft.client.gui.components.events.ContainerEventHandler
+import net.minecraft.client.gui.components.events.GuiEventListener
 import net.minecraft.client.gui.components.toasts.SystemToast
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
@@ -25,6 +28,7 @@ import org.bmp.cph.config.ModCategory
 import org.bmp.cph.config.PackInfo
 import org.bmp.cph.config.RequiredMod
 import org.bmp.cph.config.ShowPolicy
+import org.lwjgl.glfw.GLFW
 import java.util.UUID
 import kotlin.math.max
 import kotlin.math.min
@@ -39,7 +43,9 @@ open class EditorWorkspaceScreen(
     internal val editorSession: EditorSession = EditorSession.open(),
 ) : Screen(tr("workspace.title")) {
     private val windows = mutableListOf<WorkspaceWindow>()
+    private val taskWindows = mutableListOf<WorkspaceWindow>()
     private var activePointer: PointerOperation? = null
+    private var activeTaskDrag: TaskbarDrag? = null
     private var initialized = false
     private var exitConfirmation = false
     private var lastWidth = 0
@@ -96,6 +102,7 @@ open class EditorWorkspaceScreen(
         renderTaskbar(guiGraphics, mouseX, mouseY)
         renderStatus(guiGraphics)
         if (exitConfirmation) renderExitConfirmation(guiGraphics, mouseX, mouseY)
+        updateCursor(mouseX, mouseY)
     }
 
     private fun renderWorkspaceBackground(graphics: GuiGraphics) {
@@ -115,7 +122,13 @@ open class EditorWorkspaceScreen(
             graphics.fill(x, y, x + 1, y + 1, 0x123F5662)
         }
         graphics.drawString(font, title, 8, 8, EditorTheme.TEXT, false)
-        graphics.drawString(font, editorSession.config.pack?.name?.takeIf(String::isNotBlank) ?: tr("hub.untitled").string, 158, 8, EditorTheme.TEXT_MUTED, false)
+        val packName = editorSession.config.pack?.name?.takeIf(String::isNotBlank) ?: tr("hub.untitled").string
+        val packX = 8 + font.width(title) + 18
+        val available = width - font.width(statusText()) - 18 - packX
+        if (available >= 24) {
+            graphics.fill(packX - 9, 7, packX - 8, 17, EditorTheme.BORDER)
+            graphics.drawString(font, font.plainSubstrByWidth(packName, available), packX, 8, EditorTheme.TEXT_MUTED, false)
+        }
     }
 
     private data class RailItem(val glyph: String, val hint: Component, val action: () -> Unit)
@@ -141,12 +154,7 @@ open class EditorWorkspaceScreen(
     }
 
     private fun renderTaskbar(graphics: GuiGraphics, mouseX: Int, mouseY: Int) {
-        var x = RAIL_WIDTH + 5
-        val sharedWidth = taskbarItemWidth()
-        windows.forEach { window ->
-            val itemWidth = min((font.width(window.title) + 25).coerceAtLeast(42), sharedWidth)
-            val rect = EditorRect(x, height - TASKBAR_HEIGHT + 4, min(x + itemWidth, width - 5), height - 4)
-            if (rect.width < 24) return@forEach
+        taskbarLayout().forEach { (window, rect) ->
             val hovered = rect.contains(mouseX, mouseY)
             val focused = !window.minimized && windows.lastOrNull() === window
             drawRoundedOutline(
@@ -154,18 +162,34 @@ open class EditorWorkspaceScreen(
                 if (focused) EditorTheme.ACCENT else if (hovered) 0xFF515761.toInt() else EditorTheme.BORDER,
                 if (hovered) EditorTheme.SURFACE_HOVER else EditorTheme.SURFACE,
             )
-            graphics.drawString(font, if (window.minimized) "▱" else "□", rect.left + 6, rect.top + 5, EditorTheme.TEXT_MUTED, false)
-            graphics.drawString(font, font.plainSubstrByWidth(window.title.string, rect.width - 23), rect.left + 18, rect.top + 5, EditorTheme.TEXT, false)
-            if (hovered) setTooltipForNextRenderPass(window.title)
-            x += itemWidth + 4
+            val pinRect = taskbarPinRect(rect)
+            val closeRect = taskbarCloseRect(rect)
+            val pinHovered = pinRect.contains(mouseX, mouseY)
+            val closeHovered = closeRect.contains(mouseX, mouseY)
+            if (pinHovered) fillRoundedRect(graphics, pinRect.left, pinRect.top, pinRect.right, pinRect.bottom, 3, EditorTheme.SURFACE_HOVER)
+            if (closeHovered) fillRoundedRect(graphics, closeRect.left, closeRect.top, closeRect.right, closeRect.bottom, 3, 0xFF63363D.toInt())
+            graphics.drawCenteredString(font, if (window.pinned) "◆" else "◇", (pinRect.left + pinRect.right) / 2, pinRect.top + 5, if (window.pinned) EditorTheme.ACCENT else EditorTheme.TEXT_MUTED)
+            graphics.drawCenteredString(font, "×", (closeRect.left + closeRect.right) / 2, closeRect.top + 5, if (closeHovered) EditorTheme.TEXT else EditorTheme.TEXT_MUTED)
+            val labelLeft = pinRect.right + 2
+            val labelWidth = (closeRect.left - labelLeft - 2).coerceAtLeast(0)
+            if (labelWidth > 4) graphics.drawString(font, font.plainSubstrByWidth(window.title.string, labelWidth), labelLeft, rect.top + 5, EditorTheme.TEXT, false)
+            when {
+                pinHovered -> setTooltipForNextRenderPass(tr(if (window.pinned) "workspace.taskbar.unpin" else "workspace.taskbar.pin"))
+                closeHovered -> setTooltipForNextRenderPass(tr("workspace.taskbar.close"))
+                hovered -> setTooltipForNextRenderPass(Component.empty().append(window.title).append("\n").append(tr("workspace.taskbar.drag")))
+            }
         }
     }
 
     private fun renderStatus(graphics: GuiGraphics) {
-        val status = if (editorSession.dirty) tr("workspace.unsaved") else tr("workspace.saved")
-        val color = if (editorSession.dirty) 0xFFD8B36A.toInt() else 0xFF86A891.toInt()
+        val status = statusText()
+        val color = if (hasUnsavedChanges()) 0xFFD8B36A.toInt() else 0xFF86A891.toInt()
         graphics.drawString(font, status, width - font.width(status) - 8, 8, color, false)
     }
+
+    private fun statusText(): Component = if (hasUnsavedChanges()) tr("workspace.unsaved") else tr("workspace.saved")
+
+    private fun hasUnsavedChanges(): Boolean = editorSession.dirty || windows.any(WorkspaceWindow::hasDraftChanges)
 
     private fun renderExitConfirmation(graphics: GuiGraphics, mouseX: Int, mouseY: Int) {
         graphics.fill(0, 0, width, height, 0x99080A0D.toInt())
@@ -194,14 +218,31 @@ open class EditorWorkspaceScreen(
                 item.action(); return true
             }
         }
-        taskbarWindowAt(mouseX.toInt(), mouseY.toInt())?.let { window ->
-            window.minimized = false
-            focus(window)
+        taskbarHit(mouseX.toInt(), mouseY.toInt())?.let { hit ->
+            if (button == 2 && hit.region == TaskbarRegion.BODY) {
+                closeFromTaskbar(hit.window)
+                return true
+            }
+            if (button != 0) return true
+            when (hit.region) {
+                TaskbarRegion.PIN -> hit.window.pinned = !hit.window.pinned
+                TaskbarRegion.CLOSE -> closeFromTaskbar(hit.window)
+                TaskbarRegion.BODY -> {
+                    hit.window.minimized = false
+                    focus(hit.window)
+                    if (!hit.window.pinned) activeTaskDrag = TaskbarDrag(hit.window, mouseX, mouseY)
+                }
+            }
             return true
         }
         val window = windows.asReversed().firstOrNull { !it.minimized && it.contains(mouseX, mouseY) }
         if (window != null) {
             focus(window)
+            val edge = window.resizeEdge(mouseX, mouseY)
+            if (edge != ResizeEdge.NONE && !window.maximized) {
+                activePointer = PointerOperation.Resize(window, edge, mouseX, mouseY, window.bounds.copy())
+                return true
+            }
             val chrome = window.chromeHit(mouseX, mouseY)
             when (chrome) {
                 WindowChrome.CLOSE -> window.requestClose()
@@ -214,12 +255,7 @@ open class EditorWorkspaceScreen(
                     if (window.acceptTitleClick()) window.toggleMaximize(workArea())
                     else activePointer = PointerOperation.Move(window, mouseX, mouseY, window.bounds.left, window.bounds.top)
                 }
-                else -> {
-                    val edge = window.resizeEdge(mouseX, mouseY)
-                    if (edge != ResizeEdge.NONE && !window.maximized) {
-                        activePointer = PointerOperation.Resize(window, edge, mouseX, mouseY, window.bounds.copy())
-                    } else if (window.mouseClicked(mouseX, mouseY, button)) return true
-                }
+                else -> if (window.mouseClicked(mouseX, mouseY, button)) return true
             }
             return true
         }
@@ -227,6 +263,10 @@ open class EditorWorkspaceScreen(
     }
 
     override fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean {
+        activeTaskDrag?.let { drag ->
+            if (!drag.window.pinned && kotlin.math.abs(mouseX - drag.startMouseX) >= 3.0) reorderTaskWindow(drag.window, mouseX.toInt(), mouseY.toInt())
+            return true
+        }
         when (val operation = activePointer) {
             is PointerOperation.Move -> {
                 operation.window.moveTo(
@@ -246,6 +286,10 @@ open class EditorWorkspaceScreen(
     }
 
     override fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        if (activeTaskDrag != null) {
+            activeTaskDrag = null
+            return true
+        }
         if (activePointer != null) {
             activePointer = null
             return true
@@ -283,18 +327,25 @@ open class EditorWorkspaceScreen(
             ?: super.charTyped(codePoint, modifiers)
 
     override fun onClose() {
-        if (editorSession.dirty || windows.any(WorkspaceWindow::hasDraftChanges)) exitConfirmation = true
+        if (hasUnsavedChanges()) exitConfirmation = true
         else minecraft?.setScreen(parentScreen)
+    }
+
+    override fun removed() {
+        super.removed()
+        WorkspaceCursors.apply(minecraft ?: return, WorkspaceCursor.ARROW)
     }
 
     internal fun openWindow(window: WorkspaceWindow, center: Boolean = false) {
         if (!initialized || width <= 0 || height <= 0) {
             windows += window
+            taskWindows += window
             return
         }
         if (center) window.centerIn(workArea(), windows.size)
         window.constrainTo(workArea())
         windows += window
+        taskWindows += window
         window.rebuild()
     }
 
@@ -345,6 +396,7 @@ open class EditorWorkspaceScreen(
 
     internal fun closeWindow(window: WorkspaceWindow) {
         windows.remove(window)
+        taskWindows.remove(window)
         windows.lastOrNull { !it.minimized }?.focused = true
     }
 
@@ -386,6 +438,31 @@ open class EditorWorkspaceScreen(
         window.focused = true
     }
 
+    private fun updateCursor(mouseX: Int, mouseY: Int) {
+        val client = minecraft ?: return
+        val cursor = when {
+            exitConfirmation -> if (exitButtons().any { (rect, _, _) -> rect.contains(mouseX, mouseY) }) WorkspaceCursor.HAND else WorkspaceCursor.ARROW
+            activeTaskDrag != null -> WorkspaceCursor.MOVE
+            activePointer is PointerOperation.Move -> WorkspaceCursor.MOVE
+            activePointer is PointerOperation.Resize -> cursorForEdge((activePointer as PointerOperation.Resize).edge)
+            railItems().indices.any { railRect(it).contains(mouseX, mouseY) } -> WorkspaceCursor.HAND
+            taskbarHit(mouseX, mouseY) != null -> WorkspaceCursor.HAND
+            else -> {
+                val window = windows.asReversed().firstOrNull { !it.minimized && it.contains(mouseX.toDouble(), mouseY.toDouble()) }
+                window?.cursorAt(mouseX.toDouble(), mouseY.toDouble()) ?: WorkspaceCursor.ARROW
+            }
+        }
+        WorkspaceCursors.apply(client, cursor)
+    }
+
+    private fun cursorForEdge(edge: ResizeEdge): WorkspaceCursor = when (edge) {
+        ResizeEdge.LEFT, ResizeEdge.RIGHT -> WorkspaceCursor.RESIZE_HORIZONTAL
+        ResizeEdge.TOP, ResizeEdge.BOTTOM -> WorkspaceCursor.RESIZE_VERTICAL
+        ResizeEdge.TOP_LEFT, ResizeEdge.BOTTOM_RIGHT -> WorkspaceCursor.RESIZE_NWSE
+        ResizeEdge.TOP_RIGHT, ResizeEdge.BOTTOM_LEFT -> WorkspaceCursor.RESIZE_NESW
+        ResizeEdge.NONE -> WorkspaceCursor.ARROW
+    }
+
     private fun workArea(screenWidth: Int = width, screenHeight: Int = height) = EditorRect(
         RAIL_WIDTH + 4, TOP_HEIGHT + 4, max(RAIL_WIDTH + 64, screenWidth - 4), max(TOP_HEIGHT + 64, screenHeight - TASKBAR_HEIGHT - 4),
     )
@@ -395,22 +472,59 @@ open class EditorWorkspaceScreen(
         return EditorRect(5, top, RAIL_WIDTH - 5, top + 27)
     }
 
-    private fun taskbarWindowAt(x: Int, y: Int): WorkspaceWindow? {
-        if (y < height - TASKBAR_HEIGHT) return null
+    private fun taskbarLayout(): List<Pair<WorkspaceWindow, EditorRect>> {
         var left = RAIL_WIDTH + 5
         val sharedWidth = taskbarItemWidth()
-        return windows.firstOrNull { window ->
-            val itemWidth = min((font.width(window.title) + 25).coerceAtLeast(42), sharedWidth)
-            val hit = x in left until min(left + itemWidth, width - 5)
+        return taskWindows.mapNotNull { window ->
+            val itemWidth = min((font.width(window.title) + 45).coerceAtLeast(58), sharedWidth)
+            val rect = EditorRect(left, height - TASKBAR_HEIGHT + 4, min(left + itemWidth, width - 5), height - 4)
             left += itemWidth + 4
-            hit
+            rect.takeIf { it.width >= 34 }?.let { window to it }
         }
     }
 
+    private fun taskbarHit(x: Int, y: Int): TaskbarHit? {
+        if (y < height - TASKBAR_HEIGHT) return null
+        val (window, rect) = taskbarLayout().firstOrNull { (_, rect) -> rect.contains(x, y) } ?: return null
+        val region = when {
+            taskbarPinRect(rect).contains(x, y) -> TaskbarRegion.PIN
+            taskbarCloseRect(rect).contains(x, y) -> TaskbarRegion.CLOSE
+            else -> TaskbarRegion.BODY
+        }
+        return TaskbarHit(window, region)
+    }
+
+    private fun taskbarPinRect(rect: EditorRect) = EditorRect(rect.left + 2, rect.top + 1, min(rect.left + 17, rect.right), rect.bottom - 1)
+
+    private fun taskbarCloseRect(rect: EditorRect) = EditorRect(max(rect.left, rect.right - 17), rect.top + 1, rect.right - 2, rect.bottom - 1)
+
     private fun taskbarItemWidth(): Int {
-        if (windows.isEmpty()) return 150
-        val available = (width - RAIL_WIDTH - 10 - (windows.size - 1) * 4).coerceAtLeast(windows.size * 24)
-        return (available / windows.size).coerceIn(24, 150)
+        if (taskWindows.isEmpty()) return 150
+        val available = (width - RAIL_WIDTH - 10 - (taskWindows.size - 1) * 4).coerceAtLeast(taskWindows.size * 34)
+        return (available / taskWindows.size).coerceIn(34, 150)
+    }
+
+    private fun closeFromTaskbar(window: WorkspaceWindow) {
+        if (window.hasDraftChanges()) {
+            window.minimized = false
+            focus(window)
+        }
+        window.requestClose()
+    }
+
+    private fun reorderTaskWindow(window: WorkspaceWindow, mouseX: Int, mouseY: Int) {
+        if (window.pinned || mouseY < height - TASKBAR_HEIGHT) return
+        val target = taskbarLayout().firstOrNull { (_, rect) -> rect.contains(mouseX, mouseY) }?.first ?: return
+        if (target === window || target.pinned) return
+        val from = taskWindows.indexOf(window)
+        val targetIndex = taskWindows.indexOf(target)
+        if (from < 0 || targetIndex < 0) return
+        val pinnedBefore = (from - 1 downTo 0).firstOrNull { taskWindows[it].pinned } ?: -1
+        val pinnedAfter = (from + 1 until taskWindows.size).firstOrNull { taskWindows[it].pinned } ?: taskWindows.size
+        if (targetIndex !in (pinnedBefore + 1) until pinnedAfter) return
+        taskWindows.removeAt(from)
+        val insertion = if (targetIndex > from) targetIndex - 1 else targetIndex
+        taskWindows.add(insertion.coerceIn(0, taskWindows.size), window)
     }
 
     private fun exitDialog(): EditorRect {
@@ -453,6 +567,10 @@ open class EditorWorkspaceScreen(
         data class Resize(val window: WorkspaceWindow, val edge: ResizeEdge, val startMouseX: Double, val startMouseY: Double, val original: EditorRect) : PointerOperation
     }
 
+    private data class TaskbarDrag(val window: WorkspaceWindow, val startMouseX: Double, val startMouseY: Double)
+    private data class TaskbarHit(val window: WorkspaceWindow, val region: TaskbarRegion)
+    private enum class TaskbarRegion { PIN, BODY, CLOSE }
+
     companion object {
         internal const val TOP_HEIGHT = 26
         internal const val RAIL_WIDTH = 43
@@ -464,6 +582,29 @@ private fun EditorRect.contains(x: Int, y: Int): Boolean = x >= left && x < righ
 private fun EditorRect.contains(x: Double, y: Double): Boolean = x >= left && x < right && y >= top && y < bottom
 internal enum class WindowChrome { NONE, TITLE, MINIMIZE, MAXIMIZE, CLOSE }
 internal enum class ResizeEdge { NONE, LEFT, RIGHT, TOP, BOTTOM, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT }
+internal enum class WorkspaceCursor { ARROW, HAND, TEXT, MOVE, RESIZE_HORIZONTAL, RESIZE_VERTICAL, RESIZE_NWSE, RESIZE_NESW }
+
+private object WorkspaceCursors {
+    private val handles by lazy {
+        mapOf(
+            WorkspaceCursor.ARROW to GLFW.glfwCreateStandardCursor(GLFW.GLFW_ARROW_CURSOR),
+            WorkspaceCursor.HAND to GLFW.glfwCreateStandardCursor(GLFW.GLFW_POINTING_HAND_CURSOR),
+            WorkspaceCursor.TEXT to GLFW.glfwCreateStandardCursor(GLFW.GLFW_IBEAM_CURSOR),
+            WorkspaceCursor.MOVE to GLFW.glfwCreateStandardCursor(GLFW.GLFW_RESIZE_ALL_CURSOR),
+            WorkspaceCursor.RESIZE_HORIZONTAL to GLFW.glfwCreateStandardCursor(GLFW.GLFW_RESIZE_EW_CURSOR),
+            WorkspaceCursor.RESIZE_VERTICAL to GLFW.glfwCreateStandardCursor(GLFW.GLFW_RESIZE_NS_CURSOR),
+            WorkspaceCursor.RESIZE_NWSE to GLFW.glfwCreateStandardCursor(GLFW.GLFW_RESIZE_NWSE_CURSOR),
+            WorkspaceCursor.RESIZE_NESW to GLFW.glfwCreateStandardCursor(GLFW.GLFW_RESIZE_NESW_CURSOR),
+        )
+    }
+    private var current: WorkspaceCursor? = null
+
+    fun apply(minecraft: Minecraft, cursor: WorkspaceCursor) {
+        if (cursor == current) return
+        current = cursor
+        GLFW.glfwSetCursor(minecraft.window.window, handles[cursor] ?: 0L)
+    }
+}
 
 internal abstract class WorkspaceWindow(
     protected val workspace: EditorWorkspaceScreen,
@@ -480,6 +621,7 @@ internal abstract class WorkspaceWindow(
         private set
     var minimized = false
     var maximized = false
+    var pinned = false
     var focused = true
     protected val widgets = mutableListOf<AbstractWidget>()
     protected val modalWidgets = mutableListOf<AbstractWidget>()
@@ -538,7 +680,7 @@ internal abstract class WorkspaceWindow(
         drawRoundedOutline(
             graphics, bounds.left, bounds.top, bounds.right, bounds.bottom, 7,
             if (topmost) 0xFF4D545E.toInt() else EditorTheme.BORDER,
-            0xFC15171B.toInt(),
+            0xFF15171B.toInt(),
         )
         graphics.fill(bounds.left + 1, bounds.top + TITLE_HEIGHT, bounds.right - 1, bounds.top + TITLE_HEIGHT + 1, EditorTheme.BORDER_SOFT)
         val opening = ((Util.getMillis() - openedAt) / 190f).coerceIn(0f, 1f)
@@ -676,6 +818,38 @@ internal abstract class WorkspaceWindow(
             top -> ResizeEdge.TOP
             bottom -> ResizeEdge.BOTTOM
             else -> ResizeEdge.NONE
+        }
+    }
+
+    fun cursorAt(x: Double, y: Double): WorkspaceCursor {
+        if (!maximized) {
+            when (resizeEdge(x, y)) {
+                ResizeEdge.LEFT, ResizeEdge.RIGHT -> return WorkspaceCursor.RESIZE_HORIZONTAL
+                ResizeEdge.TOP, ResizeEdge.BOTTOM -> return WorkspaceCursor.RESIZE_VERTICAL
+                ResizeEdge.TOP_LEFT, ResizeEdge.BOTTOM_RIGHT -> return WorkspaceCursor.RESIZE_NWSE
+                ResizeEdge.TOP_RIGHT, ResizeEdge.BOTTOM_LEFT -> return WorkspaceCursor.RESIZE_NESW
+                ResizeEdge.NONE -> Unit
+            }
+        }
+        return when (chromeHit(x, y)) {
+            WindowChrome.TITLE -> WorkspaceCursor.MOVE
+            WindowChrome.MINIMIZE, WindowChrome.MAXIMIZE, WindowChrome.CLOSE -> WorkspaceCursor.HAND
+            WindowChrome.NONE -> {
+                val inputWidgets = if (modalWidgets.isEmpty()) widgets else modalWidgets
+                inputWidgets.asReversed().firstNotNullOfOrNull { cursorForListener(it, x, y) } ?: WorkspaceCursor.ARROW
+            }
+        }
+    }
+
+    private fun cursorForListener(listener: GuiEventListener, x: Double, y: Double): WorkspaceCursor? {
+        if (!listener.isMouseOver(x, y)) return null
+        if (listener is ContainerEventHandler) {
+            listener.children().asReversed().firstNotNullOfOrNull { cursorForListener(it, x, y) }?.let { return it }
+        }
+        return when (listener) {
+            is EditBox, is MultiLineEditBox -> WorkspaceCursor.TEXT
+            is AbstractWidget -> if (listener.active) WorkspaceCursor.HAND else WorkspaceCursor.ARROW
+            else -> WorkspaceCursor.ARROW
         }
     }
 

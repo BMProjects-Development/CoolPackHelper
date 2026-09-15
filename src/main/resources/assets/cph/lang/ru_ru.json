@@ -408,5 +408,9 @@
   "cph.editor.workspace.window.restore": "Восстановить окно",
   "cph.editor.workspace.window.close": "Закрыть окно",
   "cph.editor.workspace.window": "Действие с окном",
-  "cph.editor.validation.empty": "Ошибок конфигурации не найдено."
+  "cph.editor.validation.empty": "Ошибок конфигурации не найдено.",
+  "cph.editor.workspace.taskbar.pin": "Закрепить вкладку в текущей позиции",
+  "cph.editor.workspace.taskbar.unpin": "Открепить вкладку",
+  "cph.editor.workspace.taskbar.close": "Закрыть вкладку, не открывая её",
+  "cph.editor.workspace.taskbar.drag": "Перетащите, чтобы изменить порядок вкладок"
 }

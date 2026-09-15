@@ -408,5 +408,9 @@
   "cph.editor.workspace.window.restore": "Restore window",
   "cph.editor.workspace.window.close": "Close window",
   "cph.editor.workspace.window": "Window action",
-  "cph.editor.validation.empty": "No configuration errors were found."
+  "cph.editor.validation.empty": "No configuration errors were found.",
+  "cph.editor.workspace.taskbar.pin": "Pin this tab in its current position",
+  "cph.editor.workspace.taskbar.unpin": "Unpin this tab",
+  "cph.editor.workspace.taskbar.close": "Close this tab without opening it",
+  "cph.editor.workspace.taskbar.drag": "Drag to change the tab order"
 }
