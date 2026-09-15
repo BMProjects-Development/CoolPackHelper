@@ -1,212 +1,78 @@
 # CoolPackHelper
 
-Клиентский помощник для сборок Minecraft. При запуске он проверяет настроенные моды, их версии и показывает адаптивный список со ссылками на скачивание.
+CoolPackHelper is a configurable, security-focused assistant for Minecraft modpacks. It detects missing or incompatible mods, explains why the pack needs them, presents localized project resources, and can install supported files through a guarded download workflow.
 
-Версия платформы: Minecraft 1.21.1, NeoForge 21.1.x, Java 21.
+The mod also provides an in-game workspace for pack authors: configure requirements, import metadata, scan the current `mods` directory, create translations, preview the player experience, and maintain installation history without editing JSON by hand.
 
-## Конфигурация
+> Current target: **Minecraft 1.21.1 · NeoForge 21.1.x · Java 21**
 
-При первом запуске создаются `config/coolpackhelper.json` и схема `config/coolpackhelper.schema.json`. Демонстрационные записи отключены (`"enabled": false`), поэтому меню не появится, пока автор сборки не включит и не настроит хотя бы один мод.
+## Highlights
 
-Основная структура:
+- Detect mods by loaded NeoForge mod ID, Maven version range, or filename pattern.
+- Separate required and recommended entries with a responsive, scrollable interface.
+- Show localized descriptions, icons, authors, licenses, and clickable project resources.
+- Resolve downloads from Modrinth, CurseForge, GitHub Releases, direct HTTPS files, or ordinary web pages.
+- Restrict bulk installation to platform-trusted Modrinth and CurseForge files.
+- Verify HTTPS destinations, redirects, hashes, file size, JAR structure, mod ID, and version before installation.
+- Back up replaced JARs, keep an installation journal, and roll back completed batches.
+- Scan installed JARs against Modrinth and CurseForge independently using hashes or fingerprints.
+- Import project metadata and links from Modrinth or CurseForge.
+- Edit the complete configuration in a movable, resizable, multi-window in-game workspace.
+- Localize the pack-facing UI and mod descriptions; optionally create editable machine-translation drafts.
 
-```json
-{
-  "$schema": "coolpackhelper.schema.json",
-  "schemaVersion": 5,
-  "pack": {
-    "id": "my-pack",
-    "name": "My Modpack",
-    "version": "1.0.0"
-  },
-  "showPolicy": "UNTIL_RESOLVED",
-  "downloads": {
-    "maxBackupBatches": 10
-  },
-  "menu": {
-    "language": {
-      "mode": "GAME",
-      "fixedLanguage": "ru_ru",
-      "fallbackLanguage": "en_us"
-    },
-    "translations": {
-      "ru_ru": {
-        "title": "Требования сборки",
-        "description": "Некоторые моды отсутствуют или имеют неподдерживаемую версию."
-      }
-    }
-  },
-  "mods": [
-    {
-      "enabled": true,
-      "category": "REQUIRED",
-      "name": "FTB Quests",
-      "modId": "ftbquests",
-      "versionRange": "[2101.1.0,)",
-      "filePattern": "ftb-quests-*.jar",
-      "descriptions": {
-        "ru_ru": "Добавляет книгу заданий этой сборки.",
-        "en_us": "Adds the quest book used by this modpack."
-      },
-      "iconUrl": "https://cdn.modrinth.com/data/....png",
-      "projectLinks": {
-        "homepage": "https://modrinth.com/mod/ftb-quests",
-        "source": "https://github.com/FTBTeam/FTB-Quests",
-        "issues": "https://github.com/FTBTeam/FTB-Quests/issues",
-        "wiki": "https://example.org/ftb-quests/wiki",
-        "discord": "https://discord.gg/example",
-        "donations": [
-          { "label": "Support the authors", "url": "https://example.org/support" }
-        ]
-      },
-      "authors": ["FTB Team"],
-      "license": "All Rights Reserved",
-      "links": [
-        {
-          "label": "Modrinth",
-          "type": "MODRINTH",
-          "projectId": "ftb-quests",
-          "url": "https://modrinth.com/mod/ftb-quests"
-        },
-        {
-          "label": "Сайт автора",
-          "type": "DIRECT",
-          "url": "https://example.org/project",
-          "downloadUrl": "https://example.org/files/ftb-quests.jar",
-          "sha256": "<64 hexadecimal characters>"
-        }
-      ]
-    }
-  ]
-}
-```
+## Documentation
 
-### Обнаружение и версии
+Choose a complete guide:
 
-- `modId` проверяет действительно загруженный NeoForge-мод и является предпочтительным способом.
-- `versionRange` использует синтаксис Maven: `[1.0,2.0)`, `[1.5,)`, `(,3.0]` и так далее.
-- `filePattern` поддерживает маски `*` и `?` без учёта регистра. Она используется как самостоятельный запасной детектор только для записей без `modId`.
-- Если заполнен `modId`, наличие похожего JAR не скрывает ошибку загрузки или неверную версию.
+- [English documentation](docs/GUIDE_EN.md)
+- [Документация на русском](docs/GUIDE_RU.md)
 
-### Категории
+The guides cover installation, the player workflow, the author workspace, every configuration section, platform scanning, metadata import, translation providers, download security, backups, migration, troubleshooting, and release preparation.
 
-- `REQUIRED` — обязательный мод, карточка отмечается красным цветом.
-- `RECOMMENDED` — рекомендуемый мод, карточка отмечается жёлтым цветом.
+## Quick start for players
 
-Обе категории показываются в меню, но пользователь всегда может продолжить запуск. CoolPackHelper может безопасно скачать настроенные файлы, однако не обходит проверку обязательных зависимостей NeoForge: если загрузчик остановил запуск до главного меню, клиентский экран ещё не может появиться.
+1. Install NeoForge for Minecraft 1.21.1 and Java 21.
+2. Put the CoolPackHelper JAR in the instance's `mods` directory.
+3. Start the game. If the pack has unsatisfied configured requirements, CoolPackHelper opens a compact window over the title screen.
+4. Open a mod card to read its description and project resources, or use the download action to review an available source.
+5. Restart Minecraft after installing files so NeoForge can load them.
 
-### Политика показа
+## Quick start for pack authors
 
-Поле `showPolicy` принимает:
+1. Launch the game once to generate `config/coolpackhelper.json` and `config/coolpackhelper.schema.json`.
+2. Open **Mods → CoolPackHelper Editor**, or select CoolPackHelper in the NeoForge mod list and open its configuration screen.
+3. Set the pack identity and language policy.
+4. Add mod requirements manually, import the local `mods` folder, or scan Modrinth/CurseForge.
+5. Add localized descriptions, project metadata, and one or more download sources.
+6. Preview the requirements screen, validate the workspace, and use the top-bar action to save the complete configuration.
+7. Export `config/coolpackhelper.json` with the pack. Do not distribute files from `local/coolpackhelper/`; they contain per-instance state, author settings, history, and backups.
 
-- `UNTIL_RESOLVED` — показывать при каждом запуске, пока требования не выполнены;
-- `ONCE_PER_PACK_VERSION` — один раз для сочетания `pack.id` и `pack.version`;
-- `ONCE_EVER` — один раз за всё время;
-- `NEVER` — не показывать меню.
+The generated example entries are disabled. CoolPackHelper will not show a requirements warning until an author enables and configures at least one entry.
 
-Пользовательское состояние хранится в `local/coolpackhelper/state.json`, поэтому оно не должно попасть в экспортируемую сборку вместе с папкой `config`. Старый `config/coolpackhelper-state.json` читается для миграции. Режимы однократного показа отмечаются только после закрытия показанного игроку экрана.
+## Safety model
 
-Старые поля `showOnlyOnce`, `requiredMods`, `projectUrl`, `downloadUrl` и `menu.defaultLanguage` автоматически переносятся в актуальную структуру. Перед миграцией рядом с конфигом создаётся резервная копия `coolpackhelper.json.v<версия>.bak`.
+CoolPackHelper treats a link and a safe automatic installation as different things. An ordinary page can always remain a browser-only resource. Automatic installation requires enough trustworthy metadata to verify the selected file.
 
-### Выбор языка
+Trust levels are visible before installation:
 
-В `menu.language.mode` доступны два режима:
+- **Platform** — resolved through Modrinth or CurseForge metadata and constrained to their official delivery hosts.
+- **Repository** — a GitHub Release asset with a SHA-256 digest; the player must review the repository and owner.
+- **Unverified** — a third-party HTTPS file with a configured SHA-256 or SHA-512 digest; it requires an explicit individual decision and is excluded from bulk installation.
 
-- `GAME` — автоматически использовать текущий язык Minecraft;
-- `FIXED` — всегда использовать `fixedLanguage`.
+A digest proves that the downloaded bytes match the expected bytes; it does not prove that those bytes are harmless. Pack authors remain responsible for the sources they configure, and players remain in control of non-platform downloads.
 
-`fallbackLanguage` задаёт резервный язык. Каждый текстовый ключ ищется независимо в последовательности: выбранная локаль, общий код языка (`pt_br` → `pt`), резервная локаль, затем встроенный английский. Поэтому частичный перевод можно безопасно дополнять другим языком.
-
-Для описаний модов редактор поддерживает предварительный машинный перевод через LibreTranslate, DeepL Free/Pro, Google Cloud Translation Basic и бесплатный MyMemory без ключа. На новых установках выбран MyMemory, поэтому черновой перевод можно получить без предварительной регистрации. Исходный и целевой языки выбираются отдельно, результат сначала открывается для ручной проверки и только затем сохраняется. Для LibreTranslate можно указать собственный адрес; DeepL автоматически выбирает Free endpoint для ключей с суффиксом `:fx`. MyMemory-запросы автоматически делятся на фрагменты не длиннее 500 байт с сохранением переносов строк. Перед переводом доступна отдельная проверка подключения, а кнопка `?` рядом с провайдером открывает его официальную страницу настройки и показывает ограничения.
-
-API-ключи каждого провайдера не входят в конфигурацию сборки и по умолчанию живут только до закрытия экрана. Автор может явно разрешить их локальное сохранение в `local/coolpackhelper/author-settings.json`. Ключи не выводятся в журнал, а при HTTP-перенаправлении на другой сервер запрос блокируется, чтобы не передать учётные данные чужому хосту. Во внешний сервис отправляется только выбранное описание.
-
-### Источники загрузки и описания
-
-В `links` можно добавить любое количество источников. Поддерживаются типы `MODRINTH`, `CURSEFORGE`, `GITHUB_RELEASE`, `DIRECT` и `PAGE`; если `type` не указан, он определяется по адресу. При наличии нескольких источников игрок увидит отдельный экран выбора.
-
-- Modrinth: достаточно URL страницы или `projectId`; CoolPackHelper запрашивает последнюю версию для NeoForge 1.21.1 либо указанную `versionId` и использует официальный CDN и хеш API.
-- CurseForge: для автоматической установки нужны `projectId`, `fileId` и локальный API-ключ автора либо заранее сохранённая ссылка официального CDN с хешем. Запрет автора на стороннюю загрузку соблюдается — в таком случае открывается страница.
-- GitHub: автоматически принимается только asset из Releases и только при наличии SHA-256 в конфиге или официальном metadata API. Игрок получает отдельное предупреждение о проверке владельца репозитория.
-- Прямой источник: требует HTTPS и SHA-256/SHA-512, помечается как непроверенный и никогда не входит в массовую установку без отдельного решения игрока.
-- `PAGE`: только открывает страницу в браузере.
-
-Необязательные поля `fileName` и `sizeBytes` закрепляют ожидаемые имя и размер. `sha256`, `sha512` и `sha1` задают контрольные суммы; для прямых источников нужен сильный SHA-256 или SHA-512.
-
-`descriptions` содержит комментарии о назначении мода для каждого языка. Порядок выбора текста: точный язык Minecraft, общий код языка (`pt_br` → `pt`), `menu.language.fallbackLanguage`, затем `en_us`. Для простого нелокализованного описания можно использовать поле `description`.
-
-`iconUrl`, `projectLinks`, `authors` и `license` содержат сохранённый снимок метаданных проекта. В `projectLinks` отдельно хранятся страница проекта, исходный код, баг-трекер, wiki, Discord и ссылки поддержки; игрок может открыть их из экрана подробностей. Иконка загружается только по HTTPS с официальных CDN Modrinth/CurseForge, ограничивается размером 4 MiB и разрешением 2048×2048. Поддерживаются PNG, JPEG, GIF и WebP; после временной сетевой ошибки загрузка повторяется через минуту.
-
-### Интерфейс и проверка конфига
-
-- доступны вкладки «Все», «Обязательные» и «Рекомендуемые»;
-- список модов прокручивается;
-- карточки, заголовок и нижние кнопки перестраиваются для узких экранов и крупного GUI Scale;
-- карточки плавно появляются и закрываются с короткой анимацией;
-- редактор, предупреждения, подробности, выбор источников и ошибки используют единую тёмную технологичную тему;
-- собственные кнопки имеют рамку по всему периметру, плавный hover-переход и отдельные стили для основных, второстепенных и опасных действий;
-- кнопка «Подробнее» открывает полное локализованное описание, ID и сведения о версиях;
-- экранный диктор получает название, категорию, статус и описание мода;
-- доступны кнопки повторной проверки и открытия папки `mods`;
-- ошибки конфига показываются на отдельном экране с путём проблемного поля;
-- неизвестные JSON-поля считаются ошибкой, поэтому опечатки больше не игнорируются;
-- после редактирования файла можно нажать «Проверить снова» без перезапуска игры.
-
-## Внутриигровой редактор
-
-В меню NeoForge `Моды` добавлены две кнопки CoolPackHelper: предпросмотр требований и редактор. Стандартная кнопка `Config` у самого CoolPackHelper также открывает редактор.
-
-Редактор позволяет без ручной правки JSON:
-
-- настроить ID, название и версию сборки, политику показа и режим языка;
-- добавлять, выключать и удалять записи модов;
-- искать и сортировать записи, создавать копии и массово включать или выключать их;
-- редактировать `modId`, диапазон версий, файловую маску и категорию;
-- добавлять любое количество источников, редактировать их платформенные ID, точные URL, размеры и хеши;
-- добавлять локализованные описания;
-- создавать черновой перевод описания через LibreTranslate, DeepL, Google Cloud Translation или MyMemory с ручным подтверждением результата;
-- одной кнопкой импортировать с Modrinth/CurseForge название, краткое описание, авторов, лицензию, официальную иконку и доступные ссылки проекта;
-- просматривать импорт до применения и выбирать между заполнением пустых полей и полной заменой метаданных;
-- вручную корректировать импортированные метаданные без обращения к JSON;
-- создавать языки и изменять все тексты экрана требований;
-- импортировать метаданные непосредственно из JAR-файлов папки `mods`;
-- открыть живой предпросмотр экрана требований до сохранения.
-- просматривать журнал установок и откатывать сохранённые пакеты изменений.
-
-Изменения сначала находятся в рабочей копии. Перед записью они проходят ту же проверку, что и обычный конфиг. Сохранение атомарное, а предыдущая версия остаётся в `config/coolpackhelper.json.bak`.
-
-Основной путь импорта: `Моды и загрузки` → нужный мод → `Метаданные` → `Импорт из Modrinth` или `Импорт из CurseForge`. Для Modrinth можно ввести ID, slug или URL; для CurseForge — числовой project ID и локальный API-ключ. Дублирующая кнопка импорта также доступна внутри расширенной формы конкретного источника.
-
-Все поля и группы действий на экране мода находятся в прокручиваемом списке, поэтому редактор остаётся доступным при небольшом разрешении, крупном GUI Scale и в низком оконном режиме.
-
-### Сканирование Modrinth и CurseForge
-
-Проверки запускаются отдельно: «Сканировать Modrinth» и «Сканировать CurseForge». Modrinth сопоставляется по SHA-1, CurseForge — по нормализованному fingerprint. На сервер передаются только хеши, сами JAR-файлы никуда не загружаются.
-
-Результат делится на найденные, ненайденные и неизвестные файлы. Сетевая ошибка никогда не считается отсутствием мода. Автор выбирает ненайденные файлы и импортирует их как выключенные черновики, после чего проверяет автоматически извлечённые сведения, добавляет ссылки и включает записи.
-
-Важно: «не найдено» означает отсутствие точного совпадения конкретного JAR, а не гарантированное отсутствие проекта. Пересобранный или изменённый файл получит другой хеш.
-
-Для CurseForge необходим API-ключ. Он хранится отдельно в `local/coolpackhelper/author-settings.json`, не попадает в распространяемый конфиг и нужен только автору сборки. Modrinth для этой проверки ключ не требует.
-
-## Безопасная установка
-
-Массовая кнопка устанавливает только файлы, разрешённые официальными API и CDN Modrinth/CurseForge. GitHub Releases и произвольные HTTPS-источники требуют отдельного просмотра и подтверждения. Каждый редирект повторно проверяется; запрещены HTTP, учётные данные в URL, нестандартные порты, локальные/приватные адреса и несоответствующие платформе хосты.
-
-Файл сначала сохраняется как временный `.part`, ограничивается размером 512 MiB, затем сверяются ожидаемый размер и хеш. После этого CoolPackHelper открывает JAR как архив, проверяет безопасные пути, наличие NeoForge metadata, ожидаемый `modId` и диапазон версии. Только прошедший все проверки файл атомарно переносится в `mods`.
-
-Заменяемые версии не удаляются: они перемещаются в `local/coolpackhelper/backups`. Журнал хранится в `local/coolpackhelper/installations.json`; последний пакет можно откатить сразу после установки, а любой сохранённый — через экран истории. `downloads.maxBackupBatches` ограничивает число хранимых пакетов целиком — по умолчанию остаются 10 последних, а более старые файлы и записи удаляются после следующей успешной установки. После успешной установки игру нужно перезапустить.
-
-Эти проверки защищают от подмены, ошибочной ссылки и части сетевых атак, но хеш подтверждает целостность, а не безвредность файла. Поэтому интерфейс всегда показывает уровень доверия источника и не называет сторонний файл безопасным только на основании контрольной суммы.
-
-Схема JSON предоставляет подсказки и проверку полей в совместимых редакторах. Сообщения встроенного валидатора имеют локализуемые коды в `validationMessages` каждого языка.
-
-Тексты экрана требований, которые автор сборки может оформить под свой проект, находятся в `menu.translations`. Системные подписи, подсказки и ошибки CoolPackHelper переводятся ресурсами `assets/cph/lang`; тесты проверяют совпадение ключей и плейсхолдеров русского и английского файлов. Полный набор настраиваемых полей можно увидеть в автоматически созданном конфиге. Поддерживаются плейсхолдеры `{required}`, `{recommended}`, `{installed}`, `{current}`, `{total}`, `{count}`, `{mod}` и `{value}` в соответствующих строках.
-
-## Сборка
+## Building from source
 
 ```powershell
-.\gradlew.bat build
+.\gradlew.bat test build
 ```
 
-Готовый JAR появится в `build/libs`.
+The development build is written to `build/libs/cph-1.0.0.jar`.
+
+## Project status
+
+CoolPackHelper 1.0 currently focuses on mod requirements, author tooling, localization, metadata, and guarded downloads. Planned pack-management ideas such as resource-pack/shader management, control presets, Discord Rich Presence, branding, server-pack generation, and reusable content presets are intentionally outside the 1.0 scope.
+
+## License
+
+All Rights Reserved. See the project distribution page for release-specific permissions.
