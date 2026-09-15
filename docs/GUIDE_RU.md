@@ -1,6 +1,6 @@
 # CoolPackHelper 1.0 — полное руководство
 
-[Вернуться к README](../README.md) · [English version](GUIDE_EN.md)
+[Вернуться к README](../README.md) · [План развития](ROADMAP_RU.md) · [English version](GUIDE_EN.md)
 
 CoolPackHelper — помощник для сборок, рассчитанный на две аудитории:
 

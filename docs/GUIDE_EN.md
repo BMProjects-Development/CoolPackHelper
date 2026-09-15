@@ -1,6 +1,6 @@
 # CoolPackHelper 1.0 — Complete Guide
 
-[Back to README](../README.md) · [Русская версия](GUIDE_RU.md)
+[Back to README](../README.md) · [Development roadmap](ROADMAP_EN.md) · [Русская версия](GUIDE_RU.md)
 
 CoolPackHelper is a modpack companion for two audiences:
 

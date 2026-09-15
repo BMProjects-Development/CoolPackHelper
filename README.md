@@ -27,6 +27,11 @@ Choose a complete guide:
 - [English documentation](docs/GUIDE_EN.md)
 - [Документация на русском](docs/GUIDE_RU.md)
 
+Future development and design decisions are tracked separately:
+
+- [Development roadmap — English](docs/ROADMAP_EN.md)
+- [План развития — русский](docs/ROADMAP_RU.md)
+
 The guides cover installation, the player workflow, the author workspace, every configuration section, platform scanning, metadata import, translation providers, download security, backups, migration, troubleshooting, and release preparation.
 
 ## Quick start for players
@@ -71,7 +76,7 @@ The development build is written to `build/libs/cph-1.0.0.jar`.
 
 ## Project status
 
-CoolPackHelper 1.0 currently focuses on mod requirements, author tooling, localization, metadata, and guarded downloads. Planned pack-management ideas such as resource-pack/shader management, control presets, Discord Rich Presence, branding, server-pack generation, and reusable content presets are intentionally outside the 1.0 scope.
+CoolPackHelper 1.0 currently focuses on mod requirements, author tooling, localization, metadata, and guarded downloads. Pack-management ideas such as resource-pack/shader management, control presets, Discord Rich Presence, branding, server-pack generation, and reusable content presets are intentionally outside the 1.0 scope and are discussed in the roadmaps above.
 
 ## License
 
