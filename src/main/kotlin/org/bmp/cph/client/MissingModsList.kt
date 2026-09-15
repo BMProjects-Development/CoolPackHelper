@@ -12,6 +12,7 @@ import org.bmp.cph.config.ModCategory
 import org.bmp.cph.config.ResolvedMenuText
 import org.bmp.cph.client.editor.TechButton
 import org.bmp.cph.client.editor.TechButtonStyle
+import org.bmp.cph.client.editor.InvisibleRowButton
 import org.bmp.cph.client.editor.drawEditorRow
 import org.bmp.cph.client.editor.fillRoundedRect
 
@@ -48,24 +49,22 @@ class MissingModsList(
         private val font: Font,
     ) : ContainerObjectSelectionList.Entry<ModEntry>() {
         private val links = result.mod.availableLinks()
-        private val downloadButton = TechButton.builder(Component.literal(buttonLabel())) { onDownload(result) }
+        private val downloadButton = TechButton.builder(Component.literal("↓")) { onDownload(result) }
             .style(TechButtonStyle.PRIMARY)
-            .tooltip(Tooltip.create(Component.literal(links.joinToString("\n") { it.displayLabel() })))
-            .bounds(0, 0, 90, 18)
+            .tooltip(Tooltip.create(Component.literal(downloadTooltip())))
+            .bounds(0, 0, 26, 18)
             .build()
-        private val detailsButton = TechButton.builder(Component.literal(text.detailsButton)) { onDetails(result) }
-            .style(TechButtonStyle.GHOST)
-            .createNarration { Component.literal(narrationText()) }
-            .bounds(0, 0, 62, 18)
-            .build()
+        private val rowButton = InvisibleRowButton(Component.literal(narrationText())) { onDetails(result) }.also {
+            it.setTooltip(Tooltip.create(Component.translatable("cph.requirements.details.hint")))
+        }
 
         init {
             downloadButton.active = links.isNotEmpty()
         }
 
-        override fun children(): List<GuiEventListener> = listOf(detailsButton, downloadButton)
+        override fun children(): List<GuiEventListener> = listOf(downloadButton, rowButton)
 
-        override fun narratables(): List<NarratableEntry> = listOf(detailsButton, downloadButton)
+        override fun narratables(): List<NarratableEntry> = listOf(downloadButton, rowButton)
 
         override fun render(
             guiGraphics: GuiGraphics,
@@ -99,10 +98,9 @@ class MissingModsList(
                     )
                 }
             }
-            val detailsWidth = (font.width(text.detailsButton) + 16).coerceIn(52, 78)
-            val downloadWidth = (font.width(buttonLabel()) + 16).coerceIn(68, 112)
-            val actionsWidth = detailsWidth + downloadWidth + 4
-            val reservedActions = if (narrow) 0 else actionsWidth + 12
+            val downloadWidth = 26
+            val actionsWidth = downloadWidth
+            val reservedActions = actionsWidth + 15
             val nameWidth = (width - categoryWidth - 15 - (textLeft - left) - reservedActions).coerceAtLeast(30)
             val name = font.plainSubstrByWidth(result.mod.displayName(), nameWidth)
             guiGraphics.drawString(font, name, textLeft, animatedTop + 3, 0xFFFFFF, false)
@@ -135,21 +133,30 @@ class MissingModsList(
                 )
             }
 
+            if (hovered) guiGraphics.drawString(font, Component.literal("›"), left + width - actionsWidth - 17, animatedTop + height / 2 - 4, accent, false)
             downloadButton.width = downloadWidth
-            detailsButton.width = detailsWidth
-            detailsButton.x = left + width - actionsWidth - 7
-            detailsButton.y = if (narrow) animatedTop + height - 24 else animatedTop + (height - 20) / 2
-            downloadButton.x = detailsButton.x + detailsWidth + 4
-            downloadButton.y = detailsButton.y
-            detailsButton.render(guiGraphics, mouseX, mouseY, partialTick)
+            downloadButton.x = left + width - downloadWidth - 7
+            downloadButton.y = animatedTop + (height - 20) / 2
             downloadButton.render(guiGraphics, mouseX, mouseY, partialTick)
+            rowButton.x = left
+            rowButton.y = animatedTop
+            // Do not cover the download control: overlapping invisible widgets
+            // otherwise compete for clicks and show different tooltips.
+            rowButton.width = width - downloadWidth - 7
+            rowButton.height = height - 2
+            rowButton.render(guiGraphics, mouseX, mouseY, partialTick)
         }
 
-        private fun buttonLabel(): String = if (links.size <= 1) {
+        private fun downloadActionLabel(): String = if (links.size <= 1) {
             text.downloadButton.replace("{mod}", result.mod.displayName())
         } else {
             text.chooseSourceButton.replace("{count}", links.size.toString())
         }
+
+        private fun downloadTooltip(): String = buildList {
+            add(downloadActionLabel())
+            addAll(links.map { it.displayLabel() })
+        }.joinToString("\n")
 
         private fun narrationText(): String {
             val category = if (result.mod.resolvedCategory() == ModCategory.REQUIRED) text.requiredLabel else text.recommendedLabel

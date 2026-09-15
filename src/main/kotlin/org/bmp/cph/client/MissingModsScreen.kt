@@ -35,6 +35,7 @@ class MissingModsScreen(
     private var modalRight = 0
     private var modalBottom = 0
     private var lastFullscreen = Minecraft.getInstance().window.isFullscreen
+    private var lastTitleClickAt = 0L
 
     override fun usesModalBackground(): Boolean = !expanded
     override fun modalScrimColor(): Int = 0x42080A0D
@@ -78,6 +79,7 @@ class MissingModsScreen(
         )
         list.x = 8
         addRenderableWidget(list)
+        addWindowControls(0, width, 1)
         addFooterButtons()
     }
 
@@ -89,10 +91,10 @@ class MissingModsScreen(
             .replace("{recommended}", recommended.toString())
         if (!expanded) {
             drawPanel(guiGraphics, modalLeft, modalTop, modalRight, modalBottom)
-            val textWidth = (modalRight - modalLeft - 20).coerceAtLeast(40)
+            val textWidth = (modalRight - modalLeft - 72).coerceAtLeast(40)
             guiGraphics.drawString(font, font.plainSubstrByWidth(text.title, textWidth), modalLeft + 10, modalTop + 9, animatedColor(0xF0F1F3), false)
-            guiGraphics.drawString(font, font.plainSubstrByWidth(summary, textWidth), modalLeft + 10, modalTop + 23, animatedColor(0x9AA2AD), false)
-            guiGraphics.fill(modalLeft + 10, modalTop + 39, modalRight - 10, modalTop + 40, animatedAlphaColor(0x5530343C))
+            guiGraphics.drawString(font, font.plainSubstrByWidth(summary, modalRight - modalLeft - 20), modalLeft + 10, modalTop + 27, animatedColor(0x9AA2AD), false)
+            guiGraphics.fill(modalLeft + 10, modalTop + 43, modalRight - 10, modalTop + 44, animatedAlphaColor(0x5530343C))
             val preview = results.take(2)
             preview.forEachIndexed { index, result ->
                 val name = "• ${result.mod.displayName()}"
@@ -100,7 +102,7 @@ class MissingModsScreen(
                     font,
                     font.plainSubstrByWidth(name, textWidth),
                     modalLeft + 10,
-                    modalTop + 48 + index * 12,
+                    modalTop + 52 + index * 12,
                     animatedColor(0xC9CDD3),
                     false,
                 )
@@ -111,7 +113,7 @@ class MissingModsScreen(
                     font,
                     Component.translatable("cph.requirements.more", remaining),
                     modalLeft + 10,
-                    modalTop + 72,
+                    modalTop + 78,
                     animatedColor(0x7F8996),
                     false,
                 )
@@ -136,36 +138,78 @@ class MissingModsScreen(
     }
 
     private fun addFooterButtons() {
-        val collapseText = Component.translatable("cph.requirements.compact")
-        val collapse = TechButton.builder(collapseText) {
-            expanded = false
-            rebuildWidgets()
-        }.style(TechButtonStyle.GHOST)
-            .tooltip(Tooltip.create(Component.translatable("cph.requirements.compact.hint")))
-            .bounds(0, 0, compactButtonWidth(collapseText, 70), 18).build()
-        val continueButton = button(text.continueButton, ::onClose, TechButtonStyle.GHOST)
-        val folderButton = button(text.openModsFolderButton, ::openModsFolder, TechButtonStyle.GHOST)
-        val recheckButton = button(text.recheckButton, ::recheck)
-        addFooterActions(collapse, continueButton, folderButton, recheckButton, bulkDownloadButton())
+        addFooterActions(
+            utilityButton("↗", Component.translatable("cph.requirements.folder.hint"), ::openModsFolder),
+            utilityButton("↻", Component.translatable("cph.requirements.recheck.hint"), ::recheck),
+            bulkDownloadButton(),
+        )
     }
 
     private fun initCompactWindow() {
         val modalWidth = (width - 44).coerceAtMost(340).coerceAtLeast(250)
-        val modalHeight = (height - 40).coerceAtMost(126).coerceAtLeast(110)
+        val modalHeight = (height - 40).coerceAtMost(150).coerceAtLeast(132)
         modalLeft = (width - modalWidth) / 2
         modalTop = (height - modalHeight) / 2 + slideOffset(8)
         modalRight = modalLeft + modalWidth
         modalBottom = modalTop + modalHeight
 
-        val close = button(text.continueButton, ::onClose, TechButtonStyle.GHOST)
-        val expandText = Component.translatable("cph.requirements.expand")
-        val expand = TechButton.builder(expandText) {
-            expanded = true
-            rebuildWidgets()
-        }.style(TechButtonStyle.SECONDARY)
-            .tooltip(Tooltip.create(Component.translatable("cph.requirements.expand.hint")))
-            .bounds(0, 0, compactButtonWidth(expandText, 72), 18).build()
-        addCompactActions(modalLeft + 8, modalRight - 8, modalBottom - 23, close, expand, bulkDownloadButton(compact = true))
+        addWindowControls(modalLeft, modalRight, modalTop)
+        addCompactActions(
+            modalLeft + 8,
+            modalRight - 8,
+            modalBottom - 23,
+            utilityButton("↗", Component.translatable("cph.requirements.folder.hint"), ::openModsFolder),
+            utilityButton("↻", Component.translatable("cph.requirements.recheck.hint"), ::recheck),
+            bulkDownloadButton(compact = true),
+        )
+    }
+
+    private fun addWindowControls(left: Int, right: Int, top: Int) {
+        val close = utilityButton("×", Component.translatable("cph.requirements.close.hint"), ::onClose)
+        close.x = right - 25
+        close.y = top + 5
+        addRenderableWidget(close)
+
+        val toggle = utilityButton(
+            if (expanded) "—" else "□",
+            Component.translatable(if (expanded) "cph.requirements.compact.hint" else "cph.requirements.expand.hint"),
+            ::toggleExpanded,
+        )
+        toggle.x = right - 48
+        toggle.y = top + 5
+        addRenderableWidget(toggle)
+    }
+
+    private fun utilityButton(glyph: String, tooltip: Component, action: () -> Unit): TechButton =
+        TechButton.builder(Component.literal(glyph)) { action() }
+            .style(TechButtonStyle.GHOST)
+            .tooltip(Tooltip.create(tooltip))
+            .bounds(0, 0, 20, 18)
+            .build()
+
+    private fun toggleExpanded() {
+        expanded = !expanded
+        rebuildWidgets()
+    }
+
+    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        if (button == 0) {
+            val inTitle = if (expanded) {
+                mouseY >= 0 && mouseY < 34 && mouseX >= 6 && mouseX < width - 54
+            } else {
+                mouseY >= modalTop && mouseY < modalTop + 34 && mouseX >= modalLeft + 6 && mouseX < modalRight - 54
+            }
+            if (inTitle) {
+                val now = Util.getMillis()
+                if (now - lastTitleClickAt <= 320L) {
+                    lastTitleClickAt = 0L
+                    toggleExpanded()
+                    return true
+                }
+                lastTitleClickAt = now
+            }
+        }
+        return super.mouseClicked(mouseX, mouseY, button)
     }
 
     private fun bulkDownloadButton(compact: Boolean = false): TechButton {
@@ -195,13 +239,6 @@ class MissingModsScreen(
                 .bounds(startX + index * (tabWidth + 4), y, tabWidth, 18).build()
             addRenderableWidget(button)
         }
-    }
-
-    private fun button(label: String, action: () -> Unit, style: TechButtonStyle = TechButtonStyle.SECONDARY): TechButton {
-        val message = Component.literal(label)
-        return TechButton.builder(message) { action() }.style(style)
-            .tooltip(Tooltip.create(Component.translatable("cph.requirements.action.hint", label)))
-            .bounds(0, 0, compactButtonWidth(message, 62), 18).build()
     }
 
     private fun openDownload(result: ModCheckResult) {
