@@ -279,7 +279,7 @@ private fun ProjectLinks.deepCopy(): ProjectLinks = copy(
     donations = donations?.map { ProjectDonationLink(it.label, it.url) },
 )
 
-private class DownloadSourceFieldsList(
+internal class DownloadSourceFieldsList(
     minecraft: Minecraft,
     width: Int,
     height: Int,
@@ -287,6 +287,7 @@ private class DownloadSourceFieldsList(
     private val rowWidth: Int,
     link: DownloadLink,
     advanced: Boolean,
+    private val onChanged: () -> Unit = {},
 ) : ContainerObjectSelectionList<DownloadSourceFieldsList.FieldEntry>(minecraft, width, height, top, 40) {
     data class Field(
         val key: String,
@@ -319,20 +320,20 @@ private class DownloadSourceFieldsList(
             DownloadSourceType.PAGE -> setOf("label", "url")
         }
         fields.filter { advanced || it.key in basic }.forEach {
-            addEntry(FieldEntry(it, minecraft.font, (rowWidth * .62).toInt().coerceAtLeast(20)))
+            addEntry(FieldEntry(it, minecraft.font, (rowWidth * .62).toInt().coerceAtLeast(20), onChanged))
         }
     }
 
     override fun getRowWidth(): Int = rowWidth
     override fun getScrollbarPosition(): Int = x + width - 7
 
-    class FieldEntry(fieldData: Field, private val font: Font, fieldWidth: Int) : Entry<FieldEntry>() {
+    class FieldEntry(fieldData: Field, private val font: Font, fieldWidth: Int, onChanged: () -> Unit) : Entry<FieldEntry>() {
         private val label = fieldData.label
         private val singleLineField = if (!fieldData.wraps) StableEditBox(font, 0, 0, fieldWidth, 20, label).also {
-            it.value = fieldData.value(); it.setMaxLength(fieldData.maxLength); it.setResponder(fieldData.changed)
+            it.value = fieldData.value(); it.setMaxLength(fieldData.maxLength); it.setResponder { value -> fieldData.changed(value); onChanged() }
         } else null
         private val wrappedField = if (fieldData.wraps) StableMultiLineEditBox(font, 0, 0, fieldWidth, 32, label, label).also {
-            it.setCharacterLimit(fieldData.maxLength); it.value = fieldData.value(); it.setValueListener(fieldData.changed)
+            it.setCharacterLimit(fieldData.maxLength); it.value = fieldData.value(); it.setValueListener { value -> fieldData.changed(value); onChanged() }
         } else null
 
         override fun children(): List<GuiEventListener> = listOfNotNull(singleLineField, wrappedField)

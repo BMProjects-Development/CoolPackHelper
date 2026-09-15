@@ -139,7 +139,7 @@ class MenuTranslationEntryScreen(
     }
 }
 
-private class TranslationFieldsList(
+internal class TranslationFieldsList(
     minecraft: Minecraft,
     width: Int,
     height: Int,
@@ -147,9 +147,10 @@ private class TranslationFieldsList(
     private val rowWidth: Int,
     keys: List<String>,
     working: JsonObject,
+    private val onChanged: () -> Unit = {},
 ) : ContainerObjectSelectionList<TranslationFieldsList.FieldEntry>(minecraft, width, height, top, 30) {
     init {
-        keys.forEach { key -> addEntry(FieldEntry(key, minecraft.font, working, (rowWidth * .62).toInt().coerceAtLeast(20))) }
+        keys.forEach { key -> addEntry(FieldEntry(key, minecraft.font, working, (rowWidth * .62).toInt().coerceAtLeast(20), onChanged)) }
     }
 
     override fun getRowWidth(): Int = rowWidth
@@ -161,12 +162,14 @@ private class TranslationFieldsList(
         private val font: Font,
         working: JsonObject,
         fieldWidth: Int,
+        onChanged: () -> Unit,
     ) : ContainerObjectSelectionList.Entry<FieldEntry>() {
         private val field = StableEditBox(font, 0, 0, fieldWidth, 20, Component.literal(key)).also { editBox ->
             editBox.value = working.get(key)?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
             editBox.setMaxLength(8192)
             editBox.setResponder { value ->
                 if (value.isBlank()) working.remove(key) else working.addProperty(key, value)
+                onChanged()
             }
         }
 

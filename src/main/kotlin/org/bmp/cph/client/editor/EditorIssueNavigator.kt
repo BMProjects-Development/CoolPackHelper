@@ -13,6 +13,10 @@ internal object EditorIssueNavigator {
 
     fun destination(parent: Screen, session: EditorSession, issue: ConfigIssue): Screen? {
         if (!canOpen(issue)) return null
+        if (parent is EditorWorkspaceScreen) {
+            parent.openIssue(issue)
+            return parent
+        }
 
         modPath.matchEntire(issue.path)?.let { match ->
             val index = match.groupValues[1].toIntOrNull() ?: return ModsEditorScreen(parent, session)

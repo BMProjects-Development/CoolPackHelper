@@ -228,7 +228,7 @@ private class MetadataImportScreen(
     }
 }
 
-private class MetadataFieldsList(
+internal class MetadataFieldsList(
     minecraft: Minecraft,
     width: Int,
     height: Int,
