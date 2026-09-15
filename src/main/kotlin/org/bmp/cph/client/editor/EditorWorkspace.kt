@@ -997,17 +997,20 @@ internal abstract class WorkspaceWindow(
     }
 
     fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        var handled = false
         val inputWidgets = if (modalWidgets.isEmpty()) widgets else modalWidgets
-        inputWidgets.asReversed().forEach { widget ->
-            if (!handled && widget.visible && widget.mouseClicked(mouseX, mouseY, button)) {
-                inputWidgets.forEach { it.isFocused = it === widget }
-                capturedWidget = widget
-                handled = true
-            }
+        // A button action may rebuild or close its window synchronously. Iterate over a snapshot so clearing
+        // and repopulating the live widget list from that action cannot invalidate this mouse dispatch.
+        val clicked = inputWidgets.asReversed().toList().firstOrNull { widget ->
+            widget.visible && widget.mouseClicked(mouseX, mouseY, button)
         }
-        if (!handled) inputWidgets.forEach { it.isFocused = false }
-        return handled
+        if (clicked != null) {
+            val currentWidgets = if (modalWidgets.isEmpty()) widgets else modalWidgets
+            currentWidgets.forEach { it.isFocused = it === clicked }
+            capturedWidget = clicked.takeIf { it in currentWidgets }
+            return true
+        }
+        (if (modalWidgets.isEmpty()) widgets else modalWidgets).forEach { it.isFocused = false }
+        return false
     }
 
     fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, dragX: Double, dragY: Double): Boolean =
