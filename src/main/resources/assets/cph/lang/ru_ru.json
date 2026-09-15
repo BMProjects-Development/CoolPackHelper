@@ -412,5 +412,10 @@
   "cph.editor.workspace.taskbar.pin": "Закрепить вкладку в текущей позиции",
   "cph.editor.workspace.taskbar.unpin": "Открепить вкладку",
   "cph.editor.workspace.taskbar.close": "Закрыть вкладку, не открывая её",
-  "cph.editor.workspace.taskbar.drag": "Перетащите, чтобы изменить порядок вкладок"
+  "cph.editor.workspace.taskbar.drag": "Перетащите, чтобы изменить порядок вкладок",
+  "cph.editor.workspace.close_pinned": "Закрыть закреплённое окно?",
+  "cph.editor.workspace.close_pinned.hint": "Окно было закреплено для защиты его позиции. Подтвердите, что действительно хотите его закрыть.",
+  "cph.editor.workspace.close_pinned_changes": "Закрыть закреплённое окно и отменить изменения?",
+  "cph.editor.workspace.close_pinned_changes.hint": "Окно закреплено и содержит неприменённые изменения.",
+  "cph.editor.workspace.close_anyway": "Всё равно закрыть"
 }

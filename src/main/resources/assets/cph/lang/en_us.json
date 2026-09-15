@@ -412,5 +412,10 @@
   "cph.editor.workspace.taskbar.pin": "Pin this tab in its current position",
   "cph.editor.workspace.taskbar.unpin": "Unpin this tab",
   "cph.editor.workspace.taskbar.close": "Close this tab without opening it",
-  "cph.editor.workspace.taskbar.drag": "Drag to change the tab order"
+  "cph.editor.workspace.taskbar.drag": "Drag to change the tab order",
+  "cph.editor.workspace.close_pinned": "Close a pinned window?",
+  "cph.editor.workspace.close_pinned.hint": "This window was pinned to protect its position. Confirm that you really want to close it.",
+  "cph.editor.workspace.close_pinned_changes": "Close this pinned window and discard changes?",
+  "cph.editor.workspace.close_pinned_changes.hint": "The window is pinned and also contains unapplied changes.",
+  "cph.editor.workspace.close_anyway": "Close anyway"
 }

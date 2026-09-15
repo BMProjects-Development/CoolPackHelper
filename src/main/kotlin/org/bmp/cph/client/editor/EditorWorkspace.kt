@@ -50,6 +50,8 @@ open class EditorWorkspaceScreen(
     private var exitConfirmation = false
     private var lastWidth = 0
     private var lastHeight = 0
+    private var resizingViewport = false
+    private val viewportLayouts = mutableMapOf<ViewportSize, Map<WorkspaceWindow, WorkspaceWindowLayout>>()
 
     override fun init() {
         if (!initialized) {
@@ -63,21 +65,39 @@ open class EditorWorkspaceScreen(
                     window.rebuild()
                 }
             }
-        } else {
+        } else if (!resizingViewport) {
             windows.forEach { it.constrainTo(workArea()) }
         }
-        lastWidth = width
-        lastHeight = height
+        if (!resizingViewport) {
+            lastWidth = width
+            lastHeight = height
+        }
     }
 
     override fun resize(minecraft: Minecraft, width: Int, height: Int) {
-        val oldArea = if (lastWidth > 0 && lastHeight > 0) workArea(lastWidth, lastHeight) else null
-        super.resize(minecraft, width, height)
+        val oldWidth = lastWidth
+        val oldHeight = lastHeight
+        val oldArea = if (oldWidth > 0 && oldHeight > 0) workArea(oldWidth, oldHeight) else null
+        if (oldWidth > 0 && oldHeight > 0) {
+            viewportLayouts[ViewportSize(oldWidth, oldHeight)] = windows.associateWith(WorkspaceWindow::captureLayout)
+        }
+        resizingViewport = true
+        try {
+            super.resize(minecraft, width, height)
+        } finally {
+            resizingViewport = false
+        }
         val newArea = workArea(width, height)
+        val savedLayouts = viewportLayouts[ViewportSize(width, height)]
         windows.forEach { window ->
-            if (window.maximized) window.applyMaximizedBounds(newArea)
-            else if (oldArea != null) window.moveWithWorkspace(oldArea, newArea)
-            window.constrainTo(newArea)
+            val saved = savedLayouts?.get(window)
+            if (saved != null) {
+                window.restoreLayout(saved, newArea)
+            } else {
+                if (window.maximized) window.applyMaximizedBounds(newArea)
+                else if (oldArea != null) window.moveWithWorkspace(oldArea, newArea)
+                window.constrainTo(newArea)
+            }
         }
         lastWidth = width
         lastHeight = height
@@ -98,6 +118,9 @@ open class EditorWorkspaceScreen(
         val topVisible = windows.lastOrNull { !it.minimized }
         windows.filterNot(WorkspaceWindow::minimized).forEach { window ->
             window.render(guiGraphics, mouseX, mouseY, partialTick, window === topVisible)
+            // Text, icons and fills use different render buffers. Finish the lower window before drawing the
+            // next one so its title-bar glyphs cannot be submitted on top of an overlapping foreground window.
+            guiGraphics.flush()
         }
         renderTaskbar(guiGraphics, mouseX, mouseY)
         renderStatus(guiGraphics)
@@ -394,9 +417,12 @@ open class EditorWorkspaceScreen(
         }
     }
 
-    internal fun closeWindow(window: WorkspaceWindow) {
+    internal fun closeWindow(window: WorkspaceWindow) = window.requestClose()
+
+    internal fun removeWindow(window: WorkspaceWindow) {
         windows.remove(window)
         taskWindows.remove(window)
+        viewportLayouts.replaceAll { _, layouts -> layouts - window }
         windows.lastOrNull { !it.minimized }?.focused = true
     }
 
@@ -505,7 +531,7 @@ open class EditorWorkspaceScreen(
     }
 
     private fun closeFromTaskbar(window: WorkspaceWindow) {
-        if (window.hasDraftChanges()) {
+        if (window.hasDraftChanges() || window.pinned) {
             window.minimized = false
             focus(window)
         }
@@ -580,9 +606,16 @@ open class EditorWorkspaceScreen(
 
 private fun EditorRect.contains(x: Int, y: Int): Boolean = x >= left && x < right && y >= top && y < bottom
 private fun EditorRect.contains(x: Double, y: Double): Boolean = x >= left && x < right && y >= top && y < bottom
+private data class ViewportSize(val width: Int, val height: Int)
+internal data class WorkspaceWindowLayout(
+    val bounds: EditorRect,
+    val maximized: Boolean,
+    val restoreBounds: EditorRect?,
+)
 internal enum class WindowChrome { NONE, TITLE, MINIMIZE, MAXIMIZE, CLOSE }
 internal enum class ResizeEdge { NONE, LEFT, RIGHT, TOP, BOTTOM, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT }
 internal enum class WorkspaceCursor { ARROW, HAND, TEXT, MOVE, RESIZE_HORIZONTAL, RESIZE_VERTICAL, RESIZE_NWSE, RESIZE_NESW }
+private enum class WindowCloseReason { DIRTY, PINNED, PINNED_DIRTY }
 
 private object WorkspaceCursors {
     private val handles by lazy {
@@ -628,7 +661,7 @@ internal abstract class WorkspaceWindow(
     private var restoreBounds: EditorRect? = null
     private var lastTitleClick = 0L
     private var capturedWidget: AbstractWidget? = null
-    private var closeConfirmation = false
+    private var closeConfirmation: WindowCloseReason? = null
     private val openedAt = Util.getMillis()
     private var focusGlow = 0f
 
@@ -644,21 +677,33 @@ internal abstract class WorkspaceWindow(
     protected abstract fun buildWidgets()
     protected abstract fun renderBody(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float)
     protected open fun renderModalOverlay(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        if (!closeConfirmation) return
+        val reason = closeConfirmation ?: return
         graphics.fill(bounds.left + 1, bounds.top + TITLE_HEIGHT + 1, bounds.right - 1, bounds.bottom - 1, 0xC8080A0D.toInt())
         val dialog = closeDialog()
         drawRoundedOutline(graphics, dialog.left, dialog.top, dialog.right, dialog.bottom, 6, EditorTheme.BORDER, EditorTheme.SURFACE)
-        graphics.drawString(font, tr("workspace.close_changes"), dialog.left + 11, dialog.top + 12, EditorTheme.TEXT, false)
-        graphics.drawString(font, tr("workspace.close_changes.hint"), dialog.left + 11, dialog.top + 29, EditorTheme.TEXT_MUTED, false)
+        val titleKey = when (reason) {
+            WindowCloseReason.DIRTY -> "workspace.close_changes"
+            WindowCloseReason.PINNED -> "workspace.close_pinned"
+            WindowCloseReason.PINNED_DIRTY -> "workspace.close_pinned_changes"
+        }
+        graphics.drawString(font, tr(titleKey), dialog.left + 11, dialog.top + 12, EditorTheme.TEXT, false)
+        font.split(tr("$titleKey.hint"), dialog.width - 22).take(2).forEachIndexed { index, line ->
+            graphics.drawString(font, line, dialog.left + 11, dialog.top + 29 + index * 10, EditorTheme.TEXT_MUTED, false)
+        }
     }
     protected open fun isDocumentDirty(): Boolean = false
     fun hasDraftChanges(): Boolean = isDocumentDirty()
     open fun commitShortcut(): Boolean = false
     protected open fun closeRequested() {
-        if (isDocumentDirty()) {
-            closeConfirmation = true
+        closeConfirmation = when {
+            pinned && isDocumentDirty() -> WindowCloseReason.PINNED_DIRTY
+            pinned -> WindowCloseReason.PINNED
+            isDocumentDirty() -> WindowCloseReason.DIRTY
+            else -> null
+        }
+        if (closeConfirmation != null) {
             rebuild()
-        } else workspace.closeWindow(this)
+        } else workspace.removeWindow(this)
     }
     protected open fun tickWindow() = Unit
 
@@ -667,7 +712,7 @@ internal abstract class WorkspaceWindow(
         modalWidgets.clear()
         capturedWidget = null
         buildWidgets()
-        if (closeConfirmation) buildCloseConfirmation()
+        if (closeConfirmation != null) buildCloseConfirmation()
     }
 
     fun tick() {
@@ -770,6 +815,18 @@ internal abstract class WorkspaceWindow(
         val left = bounds.left.coerceIn(area.left, max(area.left, area.right - w))
         val top = bounds.top.coerceIn(area.top, max(area.top, area.bottom - h))
         setBounds(EditorRect(left, top, left + w, top + h))
+    }
+
+    fun captureLayout(): WorkspaceWindowLayout = WorkspaceWindowLayout(bounds.copy(), maximized, restoreBounds?.copy())
+
+    fun restoreLayout(layout: WorkspaceWindowLayout, area: EditorRect) {
+        maximized = layout.maximized
+        restoreBounds = layout.restoreBounds?.copy()
+        if (maximized) applyMaximizedBounds(area)
+        else {
+            setBounds(layout.bounds.copy())
+            constrainTo(area)
+        }
     }
 
     fun moveWithWorkspace(oldArea: EditorRect, newArea: EditorRect) {
@@ -962,14 +1019,16 @@ internal abstract class WorkspaceWindow(
     }
 
     private fun buildCloseConfirmation() {
+        val reason = closeConfirmation ?: return
         val dialog = closeDialog()
         val buttonWidth = (dialog.width - 30) / 2
         modalButton(tr("workspace.keep_editing"), dialog.left + 10, dialog.bottom - 28, buttonWidth, {
-            closeConfirmation = false
+            closeConfirmation = null
             rebuild()
         }, TechButtonStyle.GHOST)
-        modalButton(tr("workspace.discard"), dialog.left + 15 + buttonWidth, dialog.bottom - 28, buttonWidth, {
-            workspace.closeWindow(this)
+        val confirmText = tr(if (reason == WindowCloseReason.PINNED) "workspace.close_anyway" else "workspace.discard")
+        modalButton(confirmText, dialog.left + 15 + buttonWidth, dialog.bottom - 28, buttonWidth, {
+            workspace.removeWindow(this)
         }, TechButtonStyle.DANGER)
     }
 
