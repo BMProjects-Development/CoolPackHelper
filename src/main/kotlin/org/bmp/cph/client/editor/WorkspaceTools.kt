@@ -27,9 +27,9 @@ internal class MenuTranslationsWindow(workspace: EditorWorkspaceScreen) : Worksp
     }
     private var selectedKey: String? = working.keys.firstOrNull()
     private var localeValue = selectedKey.orEmpty()
-    private var dirty = false
+    private var savedDraft = currentDraft()
 
-    override fun isDocumentDirty() = dirty
+    override fun isDocumentDirty() = currentDraft() != savedDraft
 
     override fun commitShortcut(): Boolean {
         apply()
@@ -55,12 +55,12 @@ internal class MenuTranslationsWindow(workspace: EditorWorkspaceScreen) : Worksp
         if (key != null && value != null) {
             val rightX = bodyLeft + leftWidth + 7
             val rightWidth = bodyRight - rightX
-            field(rightX, top, rightWidth - 26, localeValue, 32) { localeValue = it; dirty = true }
+            field(rightX, top, rightWidth - 26, localeValue, 32) { localeValue = it }
             button(Component.literal("×"), bodyRight - 22, top + 1, 21, ::removeLocale, TechButtonStyle.DANGER, tr("workspace.translation.delete.hint"))
             TranslationFieldsList(
                 minecraft, rightWidth, (bottom - top - 26).coerceAtLeast(38), top + 26,
                 (rightWidth - 8).coerceAtLeast(100), TEXT_FIELDS, value,
-            ) { dirty = true }.also { it.x = rightX; add(it) }
+            ) {}.also { it.x = rightX; add(it) }
         }
         button(tr("close"), bodyRight - 177, bodyBottom - 20, 78, { workspace.closeWindow(this) }, TechButtonStyle.GHOST, tr("workspace.close_window.hint"))
         button(tr("save"), bodyRight - 94, bodyBottom - 20, 90, ::apply, TechButtonStyle.PRIMARY, tr("workspace.save_window.hint"))
@@ -90,7 +90,6 @@ internal class MenuTranslationsWindow(workspace: EditorWorkspaceScreen) : Worksp
         working[code] = JsonObject()
         selectedKey = code
         localeValue = code
-        dirty = true
         rebuild()
     }
 
@@ -98,7 +97,6 @@ internal class MenuTranslationsWindow(workspace: EditorWorkspaceScreen) : Worksp
         selectedKey?.let(working::remove)
         selectedKey = working.keys.firstOrNull()
         localeValue = selectedKey.orEmpty()
-        dirty = true
         rebuild()
     }
 
@@ -109,16 +107,26 @@ internal class MenuTranslationsWindow(workspace: EditorWorkspaceScreen) : Worksp
         val value = working.remove(old) ?: return
         working[normalized] = value
         selectedKey = normalized
-        dirty = true
     }
 
     private fun apply() {
         commitLocaleRename()
         workspace.editorSession.ensureMenu().translations = working.mapValues { gson.fromJson(it.value, MenuText::class.java) }.toMutableMap()
         workspace.editorSession.markDirty()
-        dirty = false
+        savedDraft = currentDraft()
         markDraftCommitted()
         rebuild()
+    }
+
+    private fun currentDraft(): String {
+        val effective = linkedMapOf<String, JsonObject>()
+        working.forEach { (key, value) -> effective[key] = value.deepCopy() }
+        val old = selectedKey
+        val normalized = localeValue.trim().lowercase()
+        if (old != null && normalized.isNotBlank() && normalized != old && !effective.containsKey(normalized)) {
+            effective.remove(old)?.let { effective[normalized] = it }
+        }
+        return gson.toJson(effective)
     }
 
     companion object {

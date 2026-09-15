@@ -238,7 +238,8 @@ open class EditorWorkspaceScreen(
     private fun renderWorkspaceActions(graphics: GuiGraphics, mouseX: Int, mouseY: Int) {
         listOf(
             Triple(workspaceSaveRect(), "✓", tr("workspace.save_config.hint")),
-            Triple(workspaceExitRect(), "×", tr("workspace.exit_action.hint")),
+            // Keep the workspace exit visually distinct from a window's close button.
+            Triple(workspaceExitRect(), "↪", tr("workspace.exit_action.hint")),
         ).forEach { (rect, glyph, tooltip) ->
             val hovered = !exitConfirmation && rect.contains(mouseX, mouseY)
             drawRoundedOutline(
@@ -1289,9 +1290,9 @@ internal class GeneralWindow(workspace: EditorWorkspaceScreen) : WorkspaceWindow
     private var showPolicy = workspace.editorSession.config.resolvedShowPolicy()
     private var languageMode = LanguageMode.entries.firstOrNull { it.name.equals(initialLanguage.mode, true) } ?: LanguageMode.GAME
     private var backups = workspace.editorSession.config.downloads?.resolvedMaxBackupBatches() ?: 10
-    private var dirty = false
+    private var savedDraft = currentDraft()
 
-    override fun isDocumentDirty() = dirty
+    override fun isDocumentDirty() = currentDraft() != savedDraft
 
     override fun commitShortcut(): Boolean {
         apply()
@@ -1303,22 +1304,22 @@ internal class GeneralWindow(workspace: EditorWorkspaceScreen) : WorkspaceWindow
         val x = bodyLeft + labelWidth
         val fieldWidth = (bodyRight - x - 6).coerceAtLeast(60)
         val top = bodyTop + 8
-        field(x, top, fieldWidth, packId, 256) { packId = it; dirty = true }
-        field(x, top + 28, fieldWidth, packName, 256) { packName = it; dirty = true }
-        field(x, top + 56, fieldWidth, packVersion, 256) { packVersion = it; dirty = true }
-        field(x, top + 84, fieldWidth, fixedLanguage, 32) { fixedLanguage = it; dirty = true }
-        field(x, top + 112, fieldWidth, fallbackLanguage, 32) { fallbackLanguage = it; dirty = true }
+        field(x, top, fieldWidth, packId, 256) { packId = it }
+        field(x, top + 28, fieldWidth, packName, 256) { packName = it }
+        field(x, top + 56, fieldWidth, packVersion, 256) { packVersion = it }
+        field(x, top + 84, fieldWidth, fixedLanguage, 32) { fixedLanguage = it }
+        field(x, top + 112, fieldWidth, fallbackLanguage, 32) { fallbackLanguage = it }
         val buttonY = top + 144
         val third = ((bodyWidth - 14) / 3).coerceAtLeast(60)
         button(tr("general.policy", tr("policy.${showPolicy.name.lowercase()}")), bodyLeft + 2, buttonY, third, {
-            showPolicy = ShowPolicy.entries[(showPolicy.ordinal + 1) % ShowPolicy.entries.size]; dirty = true; rebuild()
+            showPolicy = ShowPolicy.entries[(showPolicy.ordinal + 1) % ShowPolicy.entries.size]; rebuild()
         })
         button(tr("general.language_mode", tr("language.${languageMode.name.lowercase()}")), bodyLeft + 7 + third, buttonY, third, {
-            languageMode = if (languageMode == LanguageMode.GAME) LanguageMode.FIXED else LanguageMode.GAME; dirty = true; rebuild()
+            languageMode = if (languageMode == LanguageMode.GAME) LanguageMode.FIXED else LanguageMode.GAME; rebuild()
         })
         button(tr("general.backups", backups), bodyLeft + 12 + third * 2, buttonY, bodyRight - (bodyLeft + 12 + third * 2), {
             val choices = listOf(5, 10, 20, 50, 100)
-            backups = choices[(choices.indexOf(backups).takeIf { it >= 0 } ?: 0).plus(1) % choices.size]; dirty = true; rebuild()
+            backups = choices[(choices.indexOf(backups).takeIf { it >= 0 } ?: 0).plus(1) % choices.size]; rebuild()
         }, tooltip = tr("general.backups.hint"))
         val footerY = bodyBottom - 20
         button(tr("close"), bodyRight - 168, footerY, 78, { workspace.closeWindow(this) }, TechButtonStyle.GHOST, tr("workspace.close_window.hint"))
@@ -1350,9 +1351,36 @@ internal class GeneralWindow(workspace: EditorWorkspaceScreen) : WorkspaceWindow
             it.fallbackLanguage = fallbackLanguage.trim().lowercase().takeIf(String::isNotBlank) ?: "en_us"
         }
         workspace.editorSession.markDirty()
-        dirty = false
+        savedDraft = currentDraft()
         markDraftCommitted()
     }
+
+    /**
+     * A value snapshot makes the window state authoritative: after Apply the exact
+     * values on screen are clean, and editing (or reverting) fields is detected
+     * without relying on responder ordering or a stale boolean flag.
+     */
+    private fun currentDraft() = GeneralDraft(
+        packId = packId,
+        packName = packName,
+        packVersion = packVersion,
+        fixedLanguage = fixedLanguage,
+        fallbackLanguage = fallbackLanguage,
+        showPolicy = showPolicy,
+        languageMode = languageMode,
+        backups = backups,
+    )
+
+    private data class GeneralDraft(
+        val packId: String,
+        val packName: String,
+        val packVersion: String,
+        val fixedLanguage: String,
+        val fallbackLanguage: String,
+        val showPolicy: ShowPolicy,
+        val languageMode: LanguageMode,
+        val backups: Int,
+    )
 }
 
 internal class ModsWindow(workspace: EditorWorkspaceScreen) : WorkspaceWindow(
@@ -1448,13 +1476,13 @@ internal class ModDocumentWindow(
     private enum class Tab { GENERAL, DESCRIPTIONS, LINKS, METADATA }
     private var working = original?.copyForEditor() ?: RequiredMod(enabled = false, descriptions = linkedMapOf(), links = emptyList())
     private var tab = Tab.GENERAL
-    private var dirty = original == null
+    private var savedDraft: RequiredMod? = original?.copyForEditor()
     private var selectedDescription: String? = working.descriptions.orEmpty().keys.firstOrNull()
     private var selectedLink = working.links.orEmpty().indices.firstOrNull()
     private var advancedLinkFields = false
     private var pendingNewLink: DownloadLink? = null
 
-    override fun isDocumentDirty() = dirty
+    override fun isDocumentDirty() = savedDraft == null || working != savedDraft
 
     override fun commitShortcut(): Boolean {
         apply()
@@ -1621,7 +1649,9 @@ internal class ModDocumentWindow(
         }
     }
 
-    private fun changed() { dirty = true }
+    // Child controls mutate [working] directly. Dirtiness is derived from its
+    // structural value, so callbacks cannot leave a stale flag after saving.
+    private fun changed() = Unit
 
     fun edits(mod: RequiredMod): Boolean = original === mod
 
@@ -1645,7 +1675,7 @@ internal class ModDocumentWindow(
         original = committed
         pendingNewLink = null
         workspace.editorSession.replaceMods(mods)
-        dirty = false
+        savedDraft = working.copyForEditor()
         markDraftCommitted()
         workspace.modsChanged()
     }
