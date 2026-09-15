@@ -51,7 +51,7 @@ open class EditorWorkspaceScreen(
     private var lastWidth = 0
     private var lastHeight = 0
     private var resizingViewport = false
-    private val viewportLayouts = mutableMapOf<ViewportSize, Map<WorkspaceWindow, WorkspaceWindowLayout>>()
+    private val sharedLayouts = mutableMapOf<WorkspaceWindow, WorkspaceWindowLayout>()
 
     override fun init() {
         if (!initialized) {
@@ -63,10 +63,14 @@ open class EditorWorkspaceScreen(
                     window.centerIn(workArea(), index)
                     window.constrainTo(workArea())
                     window.rebuild()
+                    rememberLayout(window)
                 }
             }
         } else if (!resizingViewport) {
-            windows.forEach { it.constrainTo(workArea()) }
+            windows.forEach {
+                it.constrainTo(workArea())
+                rememberLayout(it)
+            }
         }
         if (!resizingViewport) {
             lastWidth = width
@@ -78,8 +82,8 @@ open class EditorWorkspaceScreen(
         val oldWidth = lastWidth
         val oldHeight = lastHeight
         val oldArea = if (oldWidth > 0 && oldHeight > 0) workArea(oldWidth, oldHeight) else null
-        if (oldWidth > 0 && oldHeight > 0) {
-            viewportLayouts[ViewportSize(oldWidth, oldHeight)] = windows.associateWith(WorkspaceWindow::captureLayout)
+        val layouts = windows.associateWith { window ->
+            sharedLayouts[window] ?: window.captureLayout(oldArea ?: workArea())
         }
         resizingViewport = true
         try {
@@ -88,16 +92,8 @@ open class EditorWorkspaceScreen(
             resizingViewport = false
         }
         val newArea = workArea(width, height)
-        val savedLayouts = viewportLayouts[ViewportSize(width, height)]
         windows.forEach { window ->
-            val saved = savedLayouts?.get(window)
-            if (saved != null) {
-                window.restoreLayout(saved, newArea)
-            } else {
-                if (window.maximized) window.applyMaximizedBounds(newArea)
-                else if (oldArea != null) window.moveWithWorkspace(oldArea, newArea)
-                window.constrainTo(newArea)
-            }
+            window.restoreLayout(layouts.getValue(window), newArea)
         }
         lastWidth = width
         lastHeight = height
@@ -115,9 +111,13 @@ open class EditorWorkspaceScreen(
     override fun render(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         renderWorkspaceBackground(guiGraphics)
         renderRail(guiGraphics, mouseX, mouseY)
-        val topVisible = windows.lastOrNull { !it.minimized }
-        windows.filterNot(WorkspaceWindow::minimized).forEach { window ->
-            window.render(guiGraphics, mouseX, mouseY, partialTick, window === topVisible)
+        val visibleWindows = windows.filterNot(WorkspaceWindow::minimized)
+        val topVisible = visibleWindows.lastOrNull()
+        visibleWindows.forEachIndexed { index, window ->
+            window.render(
+                guiGraphics, mouseX, mouseY, partialTick, window === topVisible,
+                visibleWindows.subList(index + 1, visibleWindows.size).map(WorkspaceWindow::bounds),
+            )
             // Text, icons and fills use different render buffers. Finish the lower window before drawing the
             // next one so its title-bar glyphs cannot be submitted on top of an overlapping foreground window.
             guiGraphics.flush()
@@ -273,9 +273,15 @@ open class EditorWorkspaceScreen(
                     window.minimized = true
                     windows.lastOrNull { !it.minimized }?.let(::focus)
                 }
-                WindowChrome.MAXIMIZE -> window.toggleMaximize(workArea())
+                WindowChrome.MAXIMIZE -> {
+                    window.toggleMaximize(workArea())
+                    rememberLayout(window)
+                }
                 WindowChrome.TITLE -> {
-                    if (window.acceptTitleClick()) window.toggleMaximize(workArea())
+                    if (window.acceptTitleClick()) {
+                        window.toggleMaximize(workArea())
+                        rememberLayout(window)
+                    }
                     else activePointer = PointerOperation.Move(window, mouseX, mouseY, window.bounds.left, window.bounds.top)
                 }
                 else -> if (window.mouseClicked(mouseX, mouseY, button)) return true
@@ -314,7 +320,13 @@ open class EditorWorkspaceScreen(
             return true
         }
         if (activePointer != null) {
+            val changedWindow = when (val operation = activePointer) {
+                is PointerOperation.Move -> operation.window
+                is PointerOperation.Resize -> operation.window
+                null -> null
+            }
             activePointer = null
+            changedWindow?.let(::rememberLayout)
             return true
         }
         return windows.lastOrNull { !it.minimized }?.mouseReleased(mouseX, mouseY, button) == true
@@ -370,6 +382,7 @@ open class EditorWorkspaceScreen(
         windows += window
         taskWindows += window
         window.rebuild()
+        rememberLayout(window)
     }
 
     internal fun openOrFocus(key: String, factory: () -> WorkspaceWindow) {
@@ -422,7 +435,7 @@ open class EditorWorkspaceScreen(
     internal fun removeWindow(window: WorkspaceWindow) {
         windows.remove(window)
         taskWindows.remove(window)
-        viewportLayouts.replaceAll { _, layouts -> layouts - window }
+        sharedLayouts.remove(window)
         windows.lastOrNull { !it.minimized }?.focused = true
     }
 
@@ -462,6 +475,10 @@ open class EditorWorkspaceScreen(
         windows.remove(window)
         windows += window
         window.focused = true
+    }
+
+    private fun rememberLayout(window: WorkspaceWindow) {
+        if (width > 0 && height > 0) sharedLayouts[window] = window.captureLayout(workArea())
     }
 
     private fun updateCursor(mouseX: Int, mouseY: Int) {
@@ -606,9 +623,11 @@ open class EditorWorkspaceScreen(
 
 private fun EditorRect.contains(x: Int, y: Int): Boolean = x >= left && x < right && y >= top && y < bottom
 private fun EditorRect.contains(x: Double, y: Double): Boolean = x >= left && x < right && y >= top && y < bottom
-private data class ViewportSize(val width: Int, val height: Int)
+private fun EditorRect.intersects(other: EditorRect): Boolean =
+    left < other.right && right > other.left && top < other.bottom && bottom > other.top
 internal data class WorkspaceWindowLayout(
     val bounds: EditorRect,
+    val referenceArea: EditorRect,
     val maximized: Boolean,
     val restoreBounds: EditorRect?,
 )
@@ -719,7 +738,14 @@ internal abstract class WorkspaceWindow(
         tickWindow()
     }
 
-    fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float, topmost: Boolean) {
+    fun render(
+        graphics: GuiGraphics,
+        mouseX: Int,
+        mouseY: Int,
+        partialTick: Float,
+        topmost: Boolean,
+        occluders: List<EditorRect>,
+    ) {
         val shadow = if (topmost) 0x58000000 else 0x38000000
         fillRoundedRect(graphics, bounds.left + 4, bounds.top + 5, bounds.right + 4, bounds.bottom + 5, 8, shadow)
         drawRoundedOutline(
@@ -733,9 +759,10 @@ internal abstract class WorkspaceWindow(
         focusGlow += (focusTarget - focusGlow) * .22f
         val accentWidth = ((bounds.width - 2) * opening * focusGlow).toInt()
         if (accentWidth > 0) graphics.fill(bounds.left + 1, bounds.top + TITLE_HEIGHT, bounds.left + 1 + accentWidth, bounds.top + TITLE_HEIGHT + 1, EditorTheme.ACCENT)
-        graphics.drawString(font, font.plainSubstrByWidth(title.string, bounds.width - 86), bounds.left + 9, bounds.top + 8, if (topmost) EditorTheme.TEXT else EditorTheme.TEXT_MUTED, false)
+        val titleWidth = (bounds.width - 86).coerceAtLeast(0)
+        if (titleWidth >= 8) graphics.drawString(font, font.plainSubstrByWidth(title.string, titleWidth), bounds.left + 9, bounds.top + 8, if (topmost) EditorTheme.TEXT else EditorTheme.TEXT_MUTED, false)
         if (isDocumentDirty()) graphics.fill(bounds.left + 5, bounds.top + 10, bounds.left + 7, bounds.top + 12, 0xFFD8B36A.toInt())
-        renderChrome(graphics, mouseX, mouseY)
+        renderChrome(graphics, mouseX, mouseY, occluders)
         graphics.enableScissor(bounds.left + 1, bounds.top + TITLE_HEIGHT + 1, bounds.right - 1, bounds.bottom - 1)
         try {
             renderBody(graphics, mouseX, mouseY, partialTick)
@@ -749,10 +776,13 @@ internal abstract class WorkspaceWindow(
         }
     }
 
-    private fun renderChrome(graphics: GuiGraphics, mouseX: Int, mouseY: Int) {
+    private fun renderChrome(graphics: GuiGraphics, mouseX: Int, mouseY: Int, occluders: List<EditorRect>) {
         val labels = listOf(WindowChrome.MINIMIZE to "–", WindowChrome.MAXIMIZE to if (maximized) "❐" else "□", WindowChrome.CLOSE to "×")
         labels.forEach { (kind, label) ->
             val rect = chromeRect(kind)
+            // Font glyphs and solid fills are submitted through different render types. Do not submit a
+            // covered control at all: otherwise a delayed glyph batch can appear through a higher window.
+            if (occluders.any(rect::intersects)) return@forEach
             val hovered = rect.contains(mouseX, mouseY)
             if (hovered) fillRoundedRect(graphics, rect.left, rect.top, rect.right, rect.bottom, 3, if (kind == WindowChrome.CLOSE) 0xFF63363D.toInt() else EditorTheme.SURFACE_HOVER)
             graphics.drawCenteredString(font, label, (rect.left + rect.right) / 2, rect.top + 5, if (hovered) EditorTheme.TEXT else EditorTheme.TEXT_MUTED)
@@ -817,25 +847,26 @@ internal abstract class WorkspaceWindow(
         setBounds(EditorRect(left, top, left + w, top + h))
     }
 
-    fun captureLayout(): WorkspaceWindowLayout = WorkspaceWindowLayout(bounds.copy(), maximized, restoreBounds?.copy())
+    fun captureLayout(area: EditorRect): WorkspaceWindowLayout =
+        WorkspaceWindowLayout(bounds.copy(), area.copy(), maximized, restoreBounds?.copy())
 
     fun restoreLayout(layout: WorkspaceWindowLayout, area: EditorRect) {
         maximized = layout.maximized
-        restoreBounds = layout.restoreBounds?.copy()
+        restoreBounds = layout.restoreBounds?.let { scaleRect(it, layout.referenceArea, area) }
         if (maximized) applyMaximizedBounds(area)
         else {
-            setBounds(layout.bounds.copy())
+            setBounds(scaleRect(layout.bounds, layout.referenceArea, area))
             constrainTo(area)
         }
     }
 
-    fun moveWithWorkspace(oldArea: EditorRect, newArea: EditorRect) {
-        if (oldArea.width <= 0 || oldArea.height <= 0) return
-        val relativeX = (bounds.left - oldArea.left).toDouble() / oldArea.width
-        val relativeY = (bounds.top - oldArea.top).toDouble() / oldArea.height
-        val left = newArea.left + (relativeX * newArea.width).toInt()
-        val top = newArea.top + (relativeY * newArea.height).toInt()
-        setBounds(EditorRect(left, top, left + bounds.width, top + bounds.height))
+    private fun scaleRect(rect: EditorRect, source: EditorRect, target: EditorRect): EditorRect {
+        if (source.width <= 0 || source.height <= 0) return rect.copy()
+        fun scaleX(value: Int): Int = target.left + ((value - source.left).toDouble() * target.width / source.width).toInt()
+        fun scaleY(value: Int): Int = target.top + ((value - source.top).toDouble() * target.height / source.height).toInt()
+        val left = scaleX(rect.left)
+        val top = scaleY(rect.top)
+        return EditorRect(left, top, max(left + 1, scaleX(rect.right)), max(top + 1, scaleY(rect.bottom)))
     }
 
     fun moveTo(left: Int, top: Int, area: EditorRect) {
@@ -979,6 +1010,44 @@ internal abstract class WorkspaceWindow(
 
     protected fun addModal(widget: AbstractWidget): AbstractWidget = widget.also(modalWidgets::add)
 
+    protected fun drawFittedLine(
+        graphics: GuiGraphics,
+        text: Component,
+        x: Int,
+        y: Int,
+        width: Int,
+        color: Int = EditorTheme.TEXT_MUTED,
+    ) {
+        if (width >= 4) graphics.drawString(font, font.plainSubstrByWidth(text.string, width), x, y, color, false)
+    }
+
+    protected fun drawFittedLine(
+        graphics: GuiGraphics,
+        text: String,
+        x: Int,
+        y: Int,
+        width: Int,
+        color: Int = EditorTheme.TEXT_MUTED,
+    ) = drawFittedLine(graphics, Component.literal(text), x, y, width, color)
+
+    protected fun drawWrappedText(
+        graphics: GuiGraphics,
+        text: Component,
+        x: Int,
+        top: Int,
+        width: Int,
+        bottom: Int,
+        color: Int = EditorTheme.TEXT_MUTED,
+        lineHeight: Int = 11,
+        maxLines: Int = Int.MAX_VALUE,
+    ) {
+        if (width < 4 || bottom - top < font.lineHeight) return
+        val visibleLines = min(maxLines, 1 + (bottom - top - font.lineHeight) / lineHeight)
+        font.split(text, width).take(visibleLines).forEachIndexed { index, line ->
+            graphics.drawString(font, line, x, top + index * lineHeight, color, false)
+        }
+    }
+
     protected fun button(
         label: Component,
         x: Int,
@@ -1065,15 +1134,13 @@ internal class OverviewWindow(workspace: EditorWorkspaceScreen) : WorkspaceWindo
         val lineWidth = bodyWidth - 16
         graphics.drawString(font, font.plainSubstrByWidth(pack?.name?.takeIf(String::isNotBlank) ?: tr("hub.untitled").string, lineWidth), left, bodyTop + 7, EditorTheme.TEXT, false)
         val identity = listOfNotNull(pack?.id?.takeIf(String::isNotBlank), pack?.version?.takeIf(String::isNotBlank)).joinToString(" · ")
-        graphics.drawString(font, identity.ifBlank { "—" }, left, bodyTop + 22, EditorTheme.TEXT_MUTED, false)
+        drawFittedLine(graphics, identity.ifBlank { "—" }, left, bodyTop + 22, lineWidth)
         graphics.fill(left, bodyTop + 40, bodyRight - 8, bodyTop + 41, EditorTheme.BORDER_SOFT)
         val mods = config.activeModEntries().size
         val errors = ConfigValidator.validate(config).count { it.severity == IssueSeverity.ERROR }
         graphics.drawString(font, tr("hub.mods", mods), left, bodyTop + 53, EditorTheme.TEXT_MUTED, false)
         graphics.drawString(font, tr(if (errors == 0) "hub.ready" else "hub.errors", errors), left, bodyTop + 69, if (errors == 0) 0xFF8DAA96.toInt() else 0xFFC58B91.toInt(), false)
-        font.split(tr("workspace.overview.body"), lineWidth).take(4).forEachIndexed { index, line ->
-            graphics.drawString(font, line, left, bodyTop + 95 + index * 11, EditorTheme.TEXT_MUTED, false)
-        }
+        drawWrappedText(graphics, tr("workspace.overview.body"), left, bodyTop + 95, lineWidth, bodyBottom - 53, maxLines = 4)
     }
 }
 
@@ -1153,7 +1220,10 @@ internal class GeneralWindow(workspace: EditorWorkspaceScreen) : WorkspaceWindow
         labels.forEachIndexed { index, key ->
             graphics.drawString(font, font.plainSubstrByWidth(tr(key).string, (bodyWidth * .34).toInt()), bodyLeft + 6, bodyTop + 14 + index * 28, EditorTheme.TEXT_MUTED, false)
         }
-        graphics.drawString(font, tr("general.subtitle"), bodyLeft + 5, bodyBottom - 43, EditorTheme.TEXT_MUTED, false)
+        val subtitleY = bodyBottom - 43
+        if (subtitleY >= bodyTop + 178) {
+            drawFittedLine(graphics, tr("general.subtitle"), bodyLeft + 5, subtitleY, bodyWidth - 10)
+        }
     }
 
     private fun apply() {
@@ -1499,7 +1569,7 @@ internal class MetadataImportWindow(
     }
 
     override fun renderBody(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        graphics.drawString(font, tr("metadata.import.subtitle.${type.name.lowercase()}"), bodyLeft + 4, bodyTop + 5, EditorTheme.TEXT_MUTED, false)
+        drawFittedLine(graphics, tr("metadata.import.subtitle.${type.name.lowercase()}"), bodyLeft + 4, bodyTop + 5, bodyWidth - 8)
         preview?.let { metadata ->
             val lines = listOf(
                 tr("metadata.import.preview.name", metadata.name),
@@ -1507,9 +1577,14 @@ internal class MetadataImportWindow(
                 tr("metadata.import.preview.license", metadata.license ?: "—"),
                 tr("metadata.import.preview.description", Component.translatable(if (metadata.summary.isNullOrBlank()) "options.off" else "options.on")),
             )
-            lines.forEachIndexed { index, line -> graphics.drawString(font, font.plainSubstrByWidth(line.string, bodyWidth - 16), bodyLeft + 7, bodyTop + 12 + index * 23, EditorTheme.TEXT, false) }
+            lines.forEachIndexed { index, line ->
+                val y = bodyTop + 12 + index * 23
+                if (y + font.lineHeight <= bodyBottom - 25) drawFittedLine(graphics, line, bodyLeft + 7, y, bodyWidth - 16, EditorTheme.TEXT)
+            }
         }
-        error?.let { message -> font.split(Component.literal(message), bodyWidth - 16).take(3).forEachIndexed { index, line -> graphics.drawString(font, line, bodyLeft + 7, bodyTop + 82 + index * 10, 0xFFFF7777.toInt(), false) } }
+        error?.let { message ->
+            drawWrappedText(graphics, Component.literal(message), bodyLeft + 7, bodyTop + 82, bodyWidth - 16, bodyBottom - 25, 0xFFFF7777.toInt(), 10, 3)
+        }
     }
 
     private fun load() {

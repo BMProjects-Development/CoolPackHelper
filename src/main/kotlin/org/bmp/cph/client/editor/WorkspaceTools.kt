@@ -152,11 +152,12 @@ internal class LocalImportWindow(workspace: EditorWorkspaceScreen) : WorkspaceWi
     override fun renderBody(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         val result = artifacts
         val title = if (result == null) tr("import.working") else tr("import.ready", result.size)
-        graphics.drawString(font, title, bodyLeft + 7, bodyTop + 8, EditorTheme.TEXT, false)
+        drawFittedLine(graphics, title, bodyLeft + 7, bodyTop + 8, bodyWidth - 14, EditorTheme.TEXT)
         val message = error?.let { tr("import.failed", it) } ?: tr("import.hint")
-        font.split(message, bodyWidth - 16).take(5).forEachIndexed { index, line ->
-            graphics.drawString(font, line, bodyLeft + 7, bodyTop + 32 + index * 11, if (error == null) EditorTheme.TEXT_MUTED else 0xFFFF7777.toInt(), false)
-        }
+        drawWrappedText(
+            graphics, message, bodyLeft + 7, bodyTop + 32, bodyWidth - 16, bodyBottom - 26,
+            if (error == null) EditorTheme.TEXT_MUTED else 0xFFFF7777.toInt(), maxLines = 5,
+        )
     }
 
     private fun start() {
@@ -238,7 +239,7 @@ internal class ScanToolWindow(
 
     override fun renderBody(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         if (!started && platform == ScanPlatform.CURSEFORGE) {
-            graphics.drawString(font, tr("curseforge.subtitle"), bodyLeft + 6, bodyTop + 7, EditorTheme.TEXT_MUTED, false)
+            drawFittedLine(graphics, tr("curseforge.subtitle"), bodyLeft + 6, bodyTop + 7, bodyWidth - 12)
             return
         }
         val completed = report
@@ -251,8 +252,8 @@ internal class ScanToolWindow(
             return
         }
         completed.error?.let { message ->
-            graphics.drawString(font, tr("scan.failed", platform.displayName), bodyLeft + 7, bodyTop + 8, 0xFFFF7777.toInt(), false)
-            font.split(Component.literal(message), bodyWidth - 16).take(5).forEachIndexed { index, line -> graphics.drawString(font, line, bodyLeft + 7, bodyTop + 31 + index * 11, EditorTheme.TEXT_MUTED, false) }
+            drawFittedLine(graphics, tr("scan.failed", platform.displayName), bodyLeft + 7, bodyTop + 8, bodyWidth - 14, 0xFFFF7777.toInt())
+            drawWrappedText(graphics, Component.literal(message), bodyLeft + 7, bodyTop + 31, bodyWidth - 16, bodyBottom - 26, maxLines = 5)
         }
     }
 
@@ -389,10 +390,10 @@ internal class TranslationToolWindow(
             graphics.drawString(font, font.plainSubstrByWidth(tr(label).string, (bodyWidth * .27).toInt()), bodyLeft + 5, y, EditorTheme.TEXT_MUTED, false)
             y += 25
         }
-        if (result != null) graphics.drawString(font, tr("translation.preview"), bodyLeft + 5, y + if (provider.usesApiKey) 23 else 0, EditorTheme.TEXT_MUTED, false)
-        error?.let { message -> font.split(Component.literal(message), bodyWidth - 18).take(3).forEachIndexed { index, line ->
-            graphics.drawString(font, line, bodyLeft + 8, bodyBottom - 57 + index * 10, 0xFFFF7777.toInt(), false)
-        } }
+        if (result != null) drawFittedLine(graphics, tr("translation.preview"), bodyLeft + 5, y + if (provider.usesApiKey) 23 else 0, bodyWidth - 10)
+        error?.let { message ->
+            drawWrappedText(graphics, Component.literal(message), bodyLeft + 8, bodyBottom - 57, bodyWidth - 18, bodyBottom - 24, 0xFFFF7777.toInt(), 10, 3)
+        }
     }
 
     private fun cycleProvider() {
