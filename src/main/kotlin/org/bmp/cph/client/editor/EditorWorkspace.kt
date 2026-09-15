@@ -625,6 +625,23 @@ private fun EditorRect.contains(x: Int, y: Int): Boolean = x >= left && x < righ
 private fun EditorRect.contains(x: Double, y: Double): Boolean = x >= left && x < right && y >= top && y < bottom
 private fun EditorRect.intersects(other: EditorRect): Boolean =
     left < other.right && right > other.left && top < other.bottom && bottom > other.top
+private fun EditorRect.intersection(other: EditorRect): EditorRect? {
+    val clipped = EditorRect(max(left, other.left), max(top, other.top), min(right, other.right), min(bottom, other.bottom))
+    return clipped.takeIf { it.width > 0 && it.height > 0 }
+}
+
+private fun visibleRegions(base: EditorRect, occluders: List<EditorRect>): List<EditorRect> =
+    occluders.fold(listOf(base)) { regions, cover ->
+        regions.flatMap { region ->
+            val overlap = region.intersection(cover) ?: return@flatMap listOf(region)
+            buildList {
+                if (region.top < overlap.top) add(EditorRect(region.left, region.top, region.right, overlap.top))
+                if (overlap.bottom < region.bottom) add(EditorRect(region.left, overlap.bottom, region.right, region.bottom))
+                if (region.left < overlap.left) add(EditorRect(region.left, overlap.top, overlap.left, overlap.bottom))
+                if (overlap.right < region.right) add(EditorRect(overlap.right, overlap.top, region.right, overlap.bottom))
+            }
+        }
+    }
 internal data class WorkspaceWindowLayout(
     val bounds: EditorRect,
     val referenceArea: EditorRect,
@@ -763,16 +780,25 @@ internal abstract class WorkspaceWindow(
         if (titleWidth >= 8) graphics.drawString(font, font.plainSubstrByWidth(title.string, titleWidth), bounds.left + 9, bounds.top + 8, if (topmost) EditorTheme.TEXT else EditorTheme.TEXT_MUTED, false)
         if (isDocumentDirty()) graphics.fill(bounds.left + 5, bounds.top + 10, bounds.left + 7, bounds.top + 12, 0xFFD8B36A.toInt())
         renderChrome(graphics, mouseX, mouseY, occluders)
-        graphics.enableScissor(bounds.left + 1, bounds.top + TITLE_HEIGHT + 1, bounds.right - 1, bounds.bottom - 1)
-        try {
-            renderBody(graphics, mouseX, mouseY, partialTick)
-            widgets.forEach { it.render(graphics, mouseX, mouseY, partialTick) }
-            if (modalWidgets.isNotEmpty()) {
-                renderModalOverlay(graphics, mouseX, mouseY, partialTick)
-                modalWidgets.forEach { it.render(graphics, mouseX, mouseY, partialTick) }
+        val contentBounds = EditorRect(bounds.left + 1, bounds.top + TITLE_HEIGHT + 1, bounds.right - 1, bounds.bottom - 1)
+        val pointerCovered = occluders.any { it.contains(mouseX, mouseY) }
+        val contentMouseX = if (pointerCovered) HIDDEN_MOUSE else mouseX
+        val contentMouseY = if (pointerCovered) HIDDEN_MOUSE else mouseY
+        visibleRegions(contentBounds, occluders).forEach { region ->
+            graphics.enableScissor(region.left, region.top, region.right, region.bottom)
+            try {
+                renderBody(graphics, contentMouseX, contentMouseY, partialTick)
+                widgets.forEach { it.render(graphics, contentMouseX, contentMouseY, partialTick) }
+                if (modalWidgets.isNotEmpty()) {
+                    renderModalOverlay(graphics, contentMouseX, contentMouseY, partialTick)
+                    modalWidgets.forEach { it.render(graphics, contentMouseX, contentMouseY, partialTick) }
+                }
+                // Keep every deferred glyph inside the active compositor region. Flushing after the
+                // scissor is removed allows button labels from a lower window to appear over a higher one.
+                graphics.flush()
+            } finally {
+                graphics.disableScissor()
             }
-        } finally {
-            graphics.disableScissor()
         }
     }
 
@@ -1112,6 +1138,7 @@ internal abstract class WorkspaceWindow(
     companion object {
         const val TITLE_HEIGHT = 25
         const val RESIZE_GRAB = 5
+        private const val HIDDEN_MOUSE = -10_000
     }
 }
 

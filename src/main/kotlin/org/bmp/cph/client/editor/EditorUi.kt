@@ -140,6 +140,9 @@ internal class StableEditBox(
             y += ((height - 8) / 2).coerceAtLeast(0)
             width = (width - 10).coerceAtLeast(4)
             super.renderWidget(graphics, mouseX, mouseY, partialTick)
+            // Font glyphs are buffered independently from the field background. Submit them while this
+            // field's scissor is active so long values cannot escape after the clip is removed.
+            graphics.flush()
         } finally {
             x = originalX
             y = originalY
@@ -167,6 +170,7 @@ internal class StableMultiLineEditBox(
         graphics.enableScissor(x + 2, y + 3, x + width - 2, y + height - 3)
         try {
             super.renderWidget(graphics, mouseX, mouseY, partialTick)
+            graphics.flush()
         } finally {
             graphics.disableScissor()
         }
