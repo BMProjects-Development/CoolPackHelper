@@ -63,7 +63,10 @@ internal class MenuTranslationsWindow(workspace: EditorWorkspaceScreen) : Worksp
             ) { dirty = true }.also { it.x = rightX; add(it) }
         }
         button(tr("cancel"), bodyRight - 177, bodyBottom - 20, 78, { workspace.closeWindow(this) }, TechButtonStyle.GHOST)
-        button(tr("workspace.apply"), bodyRight - 94, bodyBottom - 20, 90, ::apply, TechButtonStyle.PRIMARY)
+        button(tr("save"), bodyRight - 94, bodyBottom - 20, 90, {
+            apply()
+            workspace.saveConfiguration()
+        }, TechButtonStyle.PRIMARY, tr("workspace.save_window.hint"))
     }
 
     override fun renderBody(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -440,6 +443,8 @@ internal class TranslationToolWindow(
         val text = result?.trim().orEmpty()
         if (code.isBlank() || text.isBlank()) return
         mod.descriptions = mod.descriptions.orEmpty().toMutableMap().also { it[code] = text }
+        // The generated text is no longer an unapplied translation draft after it is copied into the owner.
+        result = null
         onApplied()
         workspace.closeWindow(this)
     }

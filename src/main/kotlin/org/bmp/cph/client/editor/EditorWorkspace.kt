@@ -114,17 +114,30 @@ open class EditorWorkspaceScreen(
         val visibleWindows = windows.filterNot(WorkspaceWindow::minimized)
         val topVisible = visibleWindows.lastOrNull()
         visibleWindows.forEachIndexed { index, window ->
-            window.render(
-                guiGraphics, mouseX, mouseY, partialTick, window === topVisible,
-                visibleWindows.subList(index + 1, visibleWindows.size).map(WorkspaceWindow::bounds),
-            )
-            // Text, icons and fills use different render buffers. Finish the lower window before drawing the
-            // next one so its title-bar glyphs cannot be submitted on top of an overlapping foreground window.
-            guiGraphics.flush()
+            guiGraphics.pose().pushPose()
+            try {
+                guiGraphics.pose().translate(0.0f, 0.0f, (index + 1) * WINDOW_LAYER_STEP)
+                window.render(
+                    guiGraphics, mouseX, mouseY, partialTick, window === topVisible,
+                    visibleWindows.subList(index + 1, visibleWindows.size).map(WorkspaceWindow::bounds),
+                )
+                // Finish this depth layer before moving on so delayed glyphs retain both their scissor and
+                // their z-order instead of appearing above a newer window.
+                guiGraphics.flush()
+            } finally {
+                guiGraphics.pose().popPose()
+            }
         }
-        renderTaskbar(guiGraphics, mouseX, mouseY)
-        renderStatus(guiGraphics)
-        if (exitConfirmation) renderExitConfirmation(guiGraphics, mouseX, mouseY)
+        guiGraphics.pose().pushPose()
+        try {
+            guiGraphics.pose().translate(0.0f, 0.0f, (visibleWindows.size + 1) * WINDOW_LAYER_STEP)
+            renderTaskbar(guiGraphics, mouseX, mouseY)
+            renderStatus(guiGraphics)
+            if (exitConfirmation) renderExitConfirmation(guiGraphics, mouseX, mouseY)
+            guiGraphics.flush()
+        } finally {
+            guiGraphics.pose().popPose()
+        }
         updateCursor(mouseX, mouseY)
     }
 
@@ -445,17 +458,22 @@ open class EditorWorkspaceScreen(
         windows.filterIsInstance<ModsWindow>().forEach(ModsWindow::refresh)
     }
 
-    internal fun saveConfiguration() {
-        windows.toList().filter(WorkspaceWindow::hasDraftChanges).forEach(WorkspaceWindow::commitShortcut)
+    internal fun saveConfiguration(): Boolean {
+        // Commit from the topmost child tool towards its owner. A translation window can make the mod
+        // document below it dirty while being committed, so the dirty check must happen during iteration.
+        windows.asReversed().toList().forEach { window ->
+            if (window.hasDraftChanges()) window.commitShortcut()
+        }
         val issues = editorSession.save()
         val errors = issues.filter { it.severity == IssueSeverity.ERROR }
         if (errors.isNotEmpty()) {
             openOrFocus("validation") { ValidationWindow(this, errors) }
-            return
+            return false
         }
         Minecraft.getInstance().let {
             SystemToast.add(it.toasts, SystemToast.SystemToastId.PERIODIC_NOTIFICATION, tr("saved"), tr("saved.hint"))
         }
+        return true
     }
 
     internal fun previewRequirements() {
@@ -596,8 +614,7 @@ open class EditorWorkspaceScreen(
                 0 -> exitConfirmation = false
                 1 -> minecraft?.setScreen(parentScreen)
                 2 -> {
-                    saveConfiguration()
-                    if (!editorSession.dirty) minecraft?.setScreen(parentScreen) else exitConfirmation = false
+                    if (saveConfiguration()) minecraft?.setScreen(parentScreen) else exitConfirmation = false
                 }
             }
             return true
@@ -618,6 +635,7 @@ open class EditorWorkspaceScreen(
         internal const val TOP_HEIGHT = 26
         internal const val RAIL_WIDTH = 43
         internal const val TASKBAR_HEIGHT = 25
+        private const val WINDOW_LAYER_STEP = 20.0f
     }
 }
 
@@ -723,7 +741,7 @@ internal abstract class WorkspaceWindow(
             WindowCloseReason.PINNED_DIRTY -> "workspace.close_pinned_changes"
         }
         graphics.drawString(font, tr(titleKey), dialog.left + 11, dialog.top + 12, EditorTheme.TEXT, false)
-        font.split(tr("$titleKey.hint"), dialog.width - 22).take(2).forEachIndexed { index, line ->
+        font.split(tr("$titleKey.hint"), dialog.width - 22).take(3).forEachIndexed { index, line ->
             graphics.drawString(font, line, dialog.left + 11, dialog.top + 29 + index * 10, EditorTheme.TEXT_MUTED, false)
         }
     }
@@ -1119,15 +1137,35 @@ internal abstract class WorkspaceWindow(
     private fun buildCloseConfirmation() {
         val reason = closeConfirmation ?: return
         val dialog = closeDialog()
-        val buttonWidth = (dialog.width - 30) / 2
-        modalButton(tr("workspace.keep_editing"), dialog.left + 10, dialog.bottom - 28, buttonWidth, {
-            closeConfirmation = null
-            rebuild()
-        }, TechButtonStyle.GHOST)
-        val confirmText = tr(if (reason == WindowCloseReason.PINNED) "workspace.close_anyway" else "workspace.discard")
-        modalButton(confirmText, dialog.left + 15 + buttonWidth, dialog.bottom - 28, buttonWidth, {
+        if (reason == WindowCloseReason.PINNED) {
+            val buttonWidth = (dialog.width - 30) / 2
+            modalButton(tr("workspace.keep_editing"), dialog.left + 10, dialog.bottom - 28, buttonWidth, ::keepEditing, TechButtonStyle.GHOST)
+            modalButton(tr("workspace.close_anyway"), dialog.left + 15 + buttonWidth, dialog.bottom - 28, buttonWidth, {
+                workspace.removeWindow(this)
+            }, TechButtonStyle.DANGER)
+            return
+        }
+
+        val buttonWidth = (dialog.width - 40) / 3
+        modalButton(tr("workspace.keep_editing"), dialog.left + 10, dialog.bottom - 28, buttonWidth, ::keepEditing, TechButtonStyle.GHOST)
+        modalButton(tr("workspace.discard"), dialog.left + 15 + buttonWidth, dialog.bottom - 28, buttonWidth, {
             workspace.removeWindow(this)
         }, TechButtonStyle.DANGER)
+        modalButton(tr("save"), dialog.left + 20 + buttonWidth * 2, dialog.bottom - 28, buttonWidth, ::saveAndClose, TechButtonStyle.PRIMARY)
+    }
+
+    private fun keepEditing() {
+        closeConfirmation = null
+        rebuild()
+    }
+
+    private fun saveAndClose() {
+        closeConfirmation = null
+        if (!commitShortcut()) {
+            rebuild()
+            return
+        }
+        if (workspace.saveConfiguration()) workspace.removeWindow(this) else rebuild()
     }
 
     protected fun field(x: Int, y: Int, width: Int, value: String, maxLength: Int = 4096, changed: (String) -> Unit): StableEditBox =
@@ -1154,7 +1192,7 @@ internal class OverviewWindow(workspace: EditorWorkspaceScreen) : WorkspaceWindo
         button(tr("mods"), bodyLeft + 5, y, buttonWidth, action = { workspace.openOrFocus("mods") { ModsWindow(workspace) } })
         button(tr("general"), bodyLeft + 10 + buttonWidth, y, buttonWidth, action = { workspace.openOrFocus("general") { GeneralWindow(workspace) } })
         button(tr("requirements"), bodyLeft + 5, y + 23, buttonWidth, workspace::previewRequirements, TechButtonStyle.GHOST)
-        button(tr("save"), bodyLeft + 10 + buttonWidth, y + 23, buttonWidth, workspace::saveConfiguration, TechButtonStyle.PRIMARY)
+        button(tr("save"), bodyLeft + 10 + buttonWidth, y + 23, buttonWidth, { workspace.saveConfiguration() }, TechButtonStyle.PRIMARY)
     }
 
     override fun renderBody(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -1242,7 +1280,10 @@ internal class GeneralWindow(workspace: EditorWorkspaceScreen) : WorkspaceWindow
         }, tooltip = tr("general.backups.hint"))
         val footerY = bodyBottom - 20
         button(tr("cancel"), bodyRight - 168, footerY, 78, { workspace.closeWindow(this) }, TechButtonStyle.GHOST)
-        button(tr("workspace.apply"), bodyRight - 85, footerY, 81, ::apply, TechButtonStyle.PRIMARY)
+        button(tr("save"), bodyRight - 85, footerY, 81, {
+            apply()
+            workspace.saveConfiguration()
+        }, TechButtonStyle.PRIMARY, tr("workspace.save_window.hint"))
     }
 
     override fun renderBody(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -1400,7 +1441,10 @@ internal class ModDocumentWindow(
             Tab.METADATA -> buildMetadata(contentTop, contentBottom)
         }
         button(tr("cancel"), bodyRight - 177, bodyBottom - 20, 78, ::requestClose, TechButtonStyle.GHOST, tr("workspace.cancel.hint"))
-        button(tr("workspace.apply"), bodyRight - 94, bodyBottom - 20, 90, ::apply, TechButtonStyle.PRIMARY, tr("workspace.apply.hint"))
+        button(tr("save"), bodyRight - 94, bodyBottom - 20, 90, {
+            apply()
+            workspace.saveConfiguration()
+        }, TechButtonStyle.PRIMARY, tr("workspace.save_window.hint"))
     }
 
     private fun buildGeneral(top: Int, bottom: Int) {
