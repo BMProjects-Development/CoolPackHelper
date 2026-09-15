@@ -270,6 +270,88 @@ Proposed workflow:
 
 The builder should not claim that a generated server is production-ready solely because it starts once. Network configuration, permissions, backups, performance, security, and hosting remain administrator responsibilities.
 
+## Milestone 8 — Automatic modpack changelog generator
+
+**Status: Research / very late roadmap**
+
+A future release could create a structured changelog by comparing a new pack build with a previously captured release. This should be more useful than a raw directory diff: authors need a player-facing explanation of what changed and a machine-readable record of how the release was assembled.
+
+### Proposed workflow
+
+1. Finish and validate a release such as `1.0`.
+2. Select **Capture release snapshot** and give it the stable pack ID/version.
+3. CoolPackHelper inventories all supported components and writes a versioned local snapshot.
+4. Develop the next release normally.
+5. Capture `1.1` and select `1.0` as its comparison base.
+6. Review detected additions, removals, updates, and uncertain changes.
+7. Add human explanations, combine noisy entries, hide irrelevant files, and choose the public detail level.
+8. Generate Markdown for players and a complete JSON report for automation/audit.
+9. Store the reviewed changelog with the new release snapshot so later comparisons use confirmed history.
+
+The author must approve the report. CoolPackHelper can detect that a script or recipe changed, but it cannot reliably infer the gameplay intention behind every line.
+
+### Snapshot contents
+
+Where safe and supported, a snapshot may include:
+
+- mod ID, display name, version, filename, size, and digest;
+- resource packs, shader packs, datapacks, and their metadata/order;
+- selected configs with normalized semantic values;
+- KubeJS startup/server/client scripts and other supported scripting roots;
+- recipe identifiers and normalized inputs, outputs, conditions, and operations;
+- tags, loot tables, advancements, world-generation data, and selected data-pack registries;
+- chosen controls/options profiles;
+- CoolPackHelper requirements, sources, metadata, and localization changes;
+- server-pack composition once that module exists.
+
+Snapshots should contain metadata and normalized representations, not automatic copies of every user file. Secrets, logs, saves, caches, authentication data, crash reports, and per-player state must be excluded by default.
+
+### Change categories
+
+The generated report should distinguish:
+
+- added, removed, and updated mods;
+- same mod version but different JAR digest;
+- changed loader/Minecraft/pack version;
+- added, removed, enabled, disabled, or reordered packs/shaders;
+- created, deleted, renamed, and modified scripts;
+- recipes added, removed, or semantically changed;
+- config keys added, removed, or changed;
+- purely formatting/order changes suppressed by normalization;
+- binary/unknown files changed without a semantic explanation;
+- manually entered notes and breaking-change warnings.
+
+### Semantic adapters
+
+A useful changelog requires format-aware adapters rather than one universal parser:
+
+- JSON/JSON5/TOML/YAML/properties normalization;
+- KubeJS JavaScript analysis with a conservative recipe extractor;
+- Minecraft recipe/tag/loot-table data-pack readers;
+- optional adapters for CraftTweaker and other popular scripting systems;
+- mod-specific config adapters only when their behavior is understood and maintainable.
+
+Dynamic scripts are a hard boundary. Code can build recipes conditionally, read external state, or generate identifiers at runtime. Static analysis must label incomplete or heuristic results. A later sandboxed instrumentation mode could observe registrations in a controlled development run, but must never execute unknown pack scripts outside the normal game environment merely to produce a changelog.
+
+### Noise control and templates
+
+Authors need configurable include/exclude rules and safe defaults:
+
+- ignore timestamps, comments, formatting, cache keys, and known runtime-only values;
+- collapse hundreds of similar recipe changes into a reviewed summary;
+- group changes by Gameplay, Content, Performance, Fixes, Configuration, and Technical categories;
+- map internal IDs to localized display names;
+- select concise player notes or full technical notes;
+- define a versioned Markdown template with placeholders;
+- export JSON so launchers, websites, and CI can reuse the result;
+- preserve manual edits across rescans through stable change IDs.
+
+### Integrity and storage
+
+Release snapshots need their own schema, migration, and integrity metadata. They should live outside player-distributed runtime state unless the author explicitly exports them. Comparisons must identify the exact base snapshot and warn when files changed after capture.
+
+This feature depends on the shared content inventory, profile formats, diagnostics, and server-pack manifest. Implementing it last allows each earlier module to contribute a reliable semantic snapshot instead of creating a fragile second scanner.
+
 ## Compatibility ports
 
 **Status: Candidate after 1.0 stability**
@@ -288,6 +370,8 @@ Future work should preserve clear module boundaries:
 - **security** — URI, DNS, redirect, digest, archive, and identity checks;
 - **transactions** — staging, atomic application, backup, journal, rollback;
 - **profiles** — resource-pack order and selected options/key mappings;
+- **snapshots** — normalized, versioned release inventories and comparison bases;
+- **diff/reporting** — semantic adapters, review state, changelog templates, and exports;
 - **workspace UI** — authoring and validation;
 - **player UI** — preview, consent, explanation, and recovery.
 
@@ -307,6 +391,7 @@ Each new content type should reuse the security and transaction layers rather th
 | 8 | Discord presence and window branding | Independent quality-of-life module. |
 | 9 | Local then curated presets | Wait until all referenced formats are stable. |
 | 10 | Server pack builder | Largest risk; depends on mature diagnostics. |
+| 11 | Automatic release snapshots and changelogs | Final integration layer over inventory, profiles, diagnostics, and manifests. |
 
 This order can change based on real user feedback, but dependencies should not be skipped merely to advertise more features.
 

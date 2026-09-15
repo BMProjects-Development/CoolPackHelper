@@ -76,7 +76,7 @@ The development build is written to `build/libs/cph-1.0.0.jar`.
 
 ## Project status
 
-CoolPackHelper 1.0 currently focuses on mod requirements, author tooling, localization, metadata, and guarded downloads. Pack-management ideas such as resource-pack/shader management, control presets, Discord Rich Presence, branding, server-pack generation, and reusable content presets are intentionally outside the 1.0 scope and are discussed in the roadmaps above.
+CoolPackHelper 1.0 currently focuses on mod requirements, author tooling, localization, metadata, and guarded downloads. Pack-management ideas such as resource-pack/shader management, control presets, Discord Rich Presence, branding, server-pack generation, reusable content presets, and automatic release changelogs are intentionally outside the 1.0 scope and are discussed in the roadmaps above.
 
 ## License
 
