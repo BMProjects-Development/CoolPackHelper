@@ -18,6 +18,7 @@ class InstallationHistoryScreen(parent: Screen) :
     private var message: Component? = null
     private var hasHistory = false
     private var activeCount = 0
+    private var pendingDeleteBatch: String? = null
 
     override fun init() {
         val records = InstallationJournal.load()
@@ -48,12 +49,20 @@ class InstallationHistoryScreen(parent: Screen) :
                 } else null
             },
             actionsOf = { batch ->
-                listOf(
+                if (batch.records.all(InstallationRecord::rolledBack)) listOf(
+                    RowAction(
+                        label = {
+                            Component.translatable(if (pendingDeleteBatch == batch.id) "cph.history.delete_confirm" else "cph.history.delete")
+                        },
+                        width = if (pendingDeleteBatch == batch.id) 96 else 72,
+                        style = { TechButtonStyle.DANGER },
+                        tooltip = Component.translatable("cph.history.delete.hint"),
+                    ) { requestDelete(batch.id) },
+                ) else listOf(
                     RowAction(
                         label = { Component.translatable("cph.history.rollback") },
                         width = 72,
                         style = { TechButtonStyle.DANGER },
-                        enabled = { batch.records.any { !it.rolledBack } },
                     ) { rollback(batch.id) },
                 )
             },
@@ -74,12 +83,26 @@ class InstallationHistoryScreen(parent: Screen) :
     }
 
     private fun rollback(batchId: String) {
+        pendingDeleteBatch = null
         val (restored, errors) = InstallationJournal.rollbackBatch(batchId)
         message = if (errors.isEmpty()) {
             Component.translatable("cph.download.rollback_done", restored)
         } else {
             Component.translatable("cph.download.rollback_failed", errors.size)
         }
+        rebuildWidgets()
+    }
+
+    private fun requestDelete(batchId: String) {
+        if (pendingDeleteBatch != batchId) {
+            pendingDeleteBatch = batchId
+            message = Component.translatable("cph.history.delete_prompt")
+            rebuildWidgets()
+            return
+        }
+        val deleted = InstallationJournal.deleteRolledBackBatch(batchId)
+        pendingDeleteBatch = null
+        message = Component.translatable(if (deleted) "cph.history.deleted" else "cph.history.delete_failed")
         rebuildWidgets()
     }
 }

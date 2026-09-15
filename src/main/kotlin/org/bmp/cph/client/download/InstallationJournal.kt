@@ -72,6 +72,24 @@ object InstallationJournal {
     }
 
     @Synchronized
+    fun deleteRolledBackBatch(batchId: String): Boolean {
+        val records = load()
+        val remaining = withoutRolledBackBatch(records, batchId) ?: return false
+        try {
+            save(remaining)
+        } catch (exception: Exception) {
+            Cph.LOGGER.error("Could not delete rolled-back installation batch {}", batchId, exception)
+            return false
+        }
+        try {
+            deleteBackupDirectory(batchId)
+        } catch (exception: Exception) {
+            Cph.LOGGER.warn("Deleted installation history but could not clean backup batch {}", batchId, exception)
+        }
+        return true
+    }
+
+    @Synchronized
     fun load(): List<InstallationRecord> = try {
         if (Files.notExists(journalPath)) emptyList()
         else Files.newBufferedReader(journalPath, StandardCharsets.UTF_8).use { reader ->
@@ -102,13 +120,7 @@ object InstallationJournal {
         val removed = mutableSetOf<String>()
         removable.forEach { batchId ->
             try {
-                val directory = backupRoot.resolve(batchId).normalize()
-                require(directory.startsWith(backupRoot) && directory != backupRoot)
-                if (Files.exists(directory)) {
-                    Files.walk(directory).use { paths ->
-                        paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
-                    }
-                }
+                deleteBackupDirectory(batchId, backupRoot)
                 removed += batchId
             } catch (exception: Exception) {
                 Cph.LOGGER.warn("Could not prune installation backup batch {}", batchId, exception)
@@ -119,6 +131,25 @@ object InstallationJournal {
 
     internal fun retainedBatchIds(records: List<InstallationRecord>, maximum: Int): Set<String> =
         records.map(InstallationRecord::batchId).filter(String::isNotBlank).distinct().takeLast(maximum.coerceAtLeast(1)).toSet()
+
+    internal fun withoutRolledBackBatch(records: List<InstallationRecord>, batchId: String): List<InstallationRecord>? {
+        val batch = records.filter { it.batchId == batchId }
+        if (batch.isEmpty() || batch.any { !it.rolledBack }) return null
+        return records.filterNot { it.batchId == batchId }
+    }
+
+    private fun deleteBackupDirectory(
+        batchId: String,
+        backupRoot: Path = root.resolve("backups").toAbsolutePath().normalize(),
+    ) {
+        val directory = backupRoot.resolve(batchId).normalize()
+        require(batchId.isNotBlank() && directory.startsWith(backupRoot) && directory != backupRoot) { "Unsafe backup batch path" }
+        if (Files.exists(directory)) {
+            Files.walk(directory).use { paths ->
+                paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+            }
+        }
+    }
 
     private fun sha256(path: Path): String {
         val digest = MessageDigest.getInstance("SHA-256")

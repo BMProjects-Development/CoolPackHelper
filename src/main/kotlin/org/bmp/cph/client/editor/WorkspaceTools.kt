@@ -117,6 +117,7 @@ internal class MenuTranslationsWindow(workspace: EditorWorkspaceScreen) : Worksp
         workspace.editorSession.ensureMenu().translations = working.mapValues { gson.fromJson(it.value, MenuText::class.java) }.toMutableMap()
         workspace.editorSession.markDirty()
         dirty = false
+        markDraftCommitted()
         rebuild()
     }
 
@@ -442,6 +443,7 @@ internal class TranslationToolWindow(
         mod.descriptions = mod.descriptions.orEmpty().toMutableMap().also { it[code] = text }
         // The generated text is no longer an unapplied translation draft after it is copied into the owner.
         result = null
+        markDraftCommitted()
         onApplied()
         workspace.closeWindow(this)
     }

@@ -785,6 +785,11 @@ internal abstract class WorkspaceWindow(
     protected open fun isDocumentDirty(): Boolean = false
     fun hasDraftChanges(): Boolean = isDocumentDirty()
     open fun commitShortcut(): Boolean = false
+    protected fun markDraftCommitted() {
+        closeConfirmation = null
+        modalWidgets.clear()
+        capturedWidget = null
+    }
     protected open fun closeRequested() {
         closeConfirmation = when {
             pinned && isDocumentDirty() -> WindowCloseReason.PINNED_DIRTY
@@ -1346,6 +1351,7 @@ internal class GeneralWindow(workspace: EditorWorkspaceScreen) : WorkspaceWindow
         }
         workspace.editorSession.markDirty()
         dirty = false
+        markDraftCommitted()
     }
 }
 
@@ -1640,6 +1646,7 @@ internal class ModDocumentWindow(
         pendingNewLink = null
         workspace.editorSession.replaceMods(mods)
         dirty = false
+        markDraftCommitted()
         workspace.modsChanged()
     }
 }

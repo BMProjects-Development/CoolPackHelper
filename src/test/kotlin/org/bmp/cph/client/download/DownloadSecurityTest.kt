@@ -85,4 +85,19 @@ class DownloadSecurityTest {
 
         assertEquals(setOf("batch-b", "batch-c"), retained)
     }
+
+    @Test
+    fun `only fully rolled back batches can be removed from history`() {
+        val records = listOf(
+            InstallationRecord(id = "a1", batchId = "batch-a", rolledBack = true),
+            InstallationRecord(id = "a2", batchId = "batch-a", rolledBack = true),
+            InstallationRecord(id = "b1", batchId = "batch-b", rolledBack = false),
+        )
+
+        val remaining = InstallationJournal.withoutRolledBackBatch(records, "batch-a")
+
+        assertEquals(listOf("b1"), remaining?.map(InstallationRecord::id))
+        assertNull(InstallationJournal.withoutRolledBackBatch(records, "batch-b"))
+        assertNull(InstallationJournal.withoutRolledBackBatch(records, "missing"))
+    }
 }
