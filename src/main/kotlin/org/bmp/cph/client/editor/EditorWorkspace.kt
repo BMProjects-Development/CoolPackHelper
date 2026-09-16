@@ -1291,8 +1291,9 @@ internal class GeneralWindow(workspace: EditorWorkspaceScreen) : WorkspaceWindow
     private var languageMode = LanguageMode.entries.firstOrNull { it.name.equals(initialLanguage.mode, true) } ?: LanguageMode.GAME
     private var backups = workspace.editorSession.config.downloads?.resolvedMaxBackupBatches() ?: 10
     private var savedDraft = currentDraft()
+    private var documentDirty = false
 
-    override fun isDocumentDirty() = currentDraft() != savedDraft
+    override fun isDocumentDirty() = documentDirty
 
     override fun commitShortcut(): Boolean {
         apply()
@@ -1304,22 +1305,22 @@ internal class GeneralWindow(workspace: EditorWorkspaceScreen) : WorkspaceWindow
         val x = bodyLeft + labelWidth
         val fieldWidth = (bodyRight - x - 6).coerceAtLeast(60)
         val top = bodyTop + 8
-        field(x, top, fieldWidth, packId, 256) { packId = it }
-        field(x, top + 28, fieldWidth, packName, 256) { packName = it }
-        field(x, top + 56, fieldWidth, packVersion, 256) { packVersion = it }
-        field(x, top + 84, fieldWidth, fixedLanguage, 32) { fixedLanguage = it }
-        field(x, top + 112, fieldWidth, fallbackLanguage, 32) { fallbackLanguage = it }
+        field(x, top, fieldWidth, packId, 256) { packId = it; updateDirtyState() }
+        field(x, top + 28, fieldWidth, packName, 256) { packName = it; updateDirtyState() }
+        field(x, top + 56, fieldWidth, packVersion, 256) { packVersion = it; updateDirtyState() }
+        field(x, top + 84, fieldWidth, fixedLanguage, 32) { fixedLanguage = it; updateDirtyState() }
+        field(x, top + 112, fieldWidth, fallbackLanguage, 32) { fallbackLanguage = it; updateDirtyState() }
         val buttonY = top + 144
         val third = ((bodyWidth - 14) / 3).coerceAtLeast(60)
         button(tr("general.policy", tr("policy.${showPolicy.name.lowercase()}")), bodyLeft + 2, buttonY, third, {
-            showPolicy = ShowPolicy.entries[(showPolicy.ordinal + 1) % ShowPolicy.entries.size]; rebuild()
+            showPolicy = ShowPolicy.entries[(showPolicy.ordinal + 1) % ShowPolicy.entries.size]; updateDirtyState(); rebuild()
         })
         button(tr("general.language_mode", tr("language.${languageMode.name.lowercase()}")), bodyLeft + 7 + third, buttonY, third, {
-            languageMode = if (languageMode == LanguageMode.GAME) LanguageMode.FIXED else LanguageMode.GAME; rebuild()
+            languageMode = if (languageMode == LanguageMode.GAME) LanguageMode.FIXED else LanguageMode.GAME; updateDirtyState(); rebuild()
         })
         button(tr("general.backups", backups), bodyLeft + 12 + third * 2, buttonY, bodyRight - (bodyLeft + 12 + third * 2), {
             val choices = listOf(5, 10, 20, 50, 100)
-            backups = choices[(choices.indexOf(backups).takeIf { it >= 0 } ?: 0).plus(1) % choices.size]; rebuild()
+            backups = choices[(choices.indexOf(backups).takeIf { it >= 0 } ?: 0).plus(1) % choices.size]; updateDirtyState(); rebuild()
         }, tooltip = tr("general.backups.hint"))
         val footerY = bodyBottom - 20
         button(tr("close"), bodyRight - 168, footerY, 78, { workspace.closeWindow(this) }, TechButtonStyle.GHOST, tr("workspace.close_window.hint"))
@@ -1352,7 +1353,12 @@ internal class GeneralWindow(workspace: EditorWorkspaceScreen) : WorkspaceWindow
         }
         workspace.editorSession.markDirty()
         savedDraft = currentDraft()
+        documentDirty = false
         markDraftCommitted()
+    }
+
+    private fun updateDirtyState() {
+        documentDirty = currentDraft() != savedDraft
     }
 
     /**
@@ -1481,8 +1487,9 @@ internal class ModDocumentWindow(
     private var selectedLink = working.links.orEmpty().indices.firstOrNull()
     private var advancedLinkFields = false
     private var pendingNewLink: DownloadLink? = null
+    private var documentDirty = savedDraft == null
 
-    override fun isDocumentDirty() = savedDraft == null || working != savedDraft
+    override fun isDocumentDirty() = documentDirty
 
     override fun commitShortcut(): Boolean {
         apply()
@@ -1649,9 +1656,11 @@ internal class ModDocumentWindow(
         }
     }
 
-    // Child controls mutate [working] directly. Dirtiness is derived from its
-    // structural value, so callbacks cannot leave a stale flag after saving.
-    private fun changed() = Unit
+    // Child controls mutate [working] directly. Compare only at mutation time;
+    // rendering can then query the cached result without walking the whole model.
+    private fun changed() {
+        documentDirty = savedDraft == null || working != savedDraft
+    }
 
     fun edits(mod: RequiredMod): Boolean = original === mod
 
@@ -1676,6 +1685,7 @@ internal class ModDocumentWindow(
         pendingNewLink = null
         workspace.editorSession.replaceMods(mods)
         savedDraft = working.copyForEditor()
+        documentDirty = false
         markDraftCommitted()
         workspace.modsChanged()
     }

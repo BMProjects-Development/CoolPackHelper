@@ -5,9 +5,10 @@ import org.apache.maven.artifact.versioning.DefaultArtifactVersion
 import org.apache.maven.artifact.versioning.VersionRange
 import org.bmp.cph.Cph
 import org.bmp.cph.client.cphMessage
+import org.bmp.cph.util.CphExecutors
+import org.bmp.cph.util.CphHttpClients
 import java.io.InputStream
 import java.net.URI
-import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.AtomicMoveNotSupportedException
@@ -24,16 +25,13 @@ import java.util.concurrent.CompletableFuture
 object SecureDownloadManager {
     private const val MAX_REDIRECTS = 5
     private const val MAX_FILE_BYTES = 512L * 1024L * 1024L
-    private val http = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(15))
-        .followRedirects(HttpClient.Redirect.NEVER)
-        .build()
+    private val http = CphHttpClients.transfer
 
     fun installAsync(
         download: ResolvedDownload,
         batchId: String,
         progress: (DownloadProgress) -> Unit,
-    ): CompletableFuture<InstallResult> = CompletableFuture.supplyAsync {
+    ): CompletableFuture<InstallResult> = CphExecutors.supply(CphExecutors.download) {
         install(download, batchId, progress)
     }
 
@@ -41,6 +39,7 @@ object SecureDownloadManager {
         download: ResolvedDownload,
         batchId: String,
         progress: (DownloadProgress) -> Unit = {},
+        batchContext: BatchInstallContext? = null,
     ): InstallResult {
         if (download.status != DownloadResolutionStatus.READY || download.downloadUri == null || download.fileName == null) {
             return InstallResult(download, false, message = download.message ?: message("not_installable"))
@@ -64,7 +63,7 @@ object SecureDownloadManager {
             val jar = JarInspector.inspect(temporary)
             verifyMod(download, jar)
 
-            val replacementCandidates = findReplacementCandidates(modsDirectory, target, download.mod.modId)
+            val replacementCandidates = findReplacementCandidates(modsDirectory, target, download.mod.modId, batchContext)
             if (replacementCandidates.isNotEmpty()) {
                 val backupDirectory = localRoot.resolve("backups").resolve(batchId)
                 Files.createDirectories(backupDirectory)
@@ -87,6 +86,7 @@ object SecureDownloadManager {
                     movedBackups,
                 )
             )
+            batchContext?.installed(replacementCandidates, target, jar.modIds)
             InstallResult(download, true, target, recordId, message("installed_restart"))
         } catch (exception: Exception) {
             Cph.LOGGER.error("Could not securely install {}", download.mod.displayName(), exception)
@@ -186,10 +186,40 @@ object SecureDownloadManager {
         }
     }
 
-    private fun findReplacementCandidates(directory: Path, target: Path, modId: String?): List<Path> {
+    internal fun createBatchContext(): BatchInstallContext {
+        val directory = FMLPaths.MODSDIR.get().toAbsolutePath().normalize()
+        val byModId = linkedMapOf<String, MutableSet<Path>>()
+        if (Files.notExists(directory)) return BatchInstallContext(byModId)
+        Files.list(directory).use { stream ->
+            stream.filter(Files::isRegularFile)
+                .filter { it.fileName.toString().endsWith(".jar", ignoreCase = true) }
+                .forEach { path ->
+                    try {
+                        val normalized = path.toAbsolutePath().normalize()
+                        JarInspector.inspect(normalized).modIds.forEach { id ->
+                            byModId.getOrPut(id.lowercase()) { linkedSetOf() }.add(normalized)
+                        }
+                    } catch (_: Exception) {
+                        // A malformed unrelated JAR must not prevent installation.
+                    }
+                }
+        }
+        return BatchInstallContext(byModId)
+    }
+
+    private fun findReplacementCandidates(
+        directory: Path,
+        target: Path,
+        modId: String?,
+        batchContext: BatchInstallContext?,
+    ): List<Path> {
         val candidates = linkedSetOf<Path>()
         if (Files.exists(target)) candidates.add(target)
         val expected = modId?.trim()?.lowercase()?.takeIf(String::isNotBlank) ?: return candidates.toList()
+        if (batchContext != null) {
+            candidates += batchContext.pathsFor(expected).filter(Files::exists)
+            return candidates.toList()
+        }
         Files.list(directory).use { stream ->
             stream.filter(Files::isRegularFile)
                 .filter { it.fileName.toString().endsWith(".jar", ignoreCase = true) }
@@ -203,6 +233,19 @@ object SecureDownloadManager {
                 }
         }
         return candidates.toList()
+    }
+
+    internal class BatchInstallContext(
+        private val byModId: MutableMap<String, MutableSet<Path>>,
+    ) {
+        fun pathsFor(modId: String): Set<Path> = byModId[modId].orEmpty()
+
+        fun installed(replaced: Collection<Path>, target: Path, modIds: Collection<String>) {
+            val removed = replaced.toSet()
+            byModId.values.forEach { paths -> paths.removeAll(removed) }
+            val normalizedTarget = target.toAbsolutePath().normalize()
+            modIds.forEach { id -> byModId.getOrPut(id.lowercase()) { linkedSetOf() }.add(normalizedTarget) }
+        }
     }
 
     private fun uniquePath(directory: Path, name: String): Path {

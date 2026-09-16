@@ -27,6 +27,7 @@ object InstallationJournal {
     private val gson = GsonBuilder().setPrettyPrinting().create()
     private val root: Path get() = FMLPaths.GAMEDIR.get().resolve("local").resolve("coolpackhelper")
     private val journalPath: Path get() = root.resolve("installations.json")
+    private var cachedRecords: List<InstallationRecord>? = null
 
     @Synchronized
     fun record(value: InstallationRecord) {
@@ -90,14 +91,19 @@ object InstallationJournal {
     }
 
     @Synchronized
-    fun load(): List<InstallationRecord> = try {
-        if (Files.notExists(journalPath)) emptyList()
-        else Files.newBufferedReader(journalPath, StandardCharsets.UTF_8).use { reader ->
-            gson.fromJson(reader, Array<InstallationRecord>::class.java)?.toList().orEmpty()
+    fun load(): List<InstallationRecord> {
+        cachedRecords?.let { return it.detachedCopy() }
+        val loaded = try {
+            if (Files.notExists(journalPath)) emptyList()
+            else Files.newBufferedReader(journalPath, StandardCharsets.UTF_8).use { reader ->
+                gson.fromJson(reader, Array<InstallationRecord>::class.java)?.toList().orEmpty()
+            }
+        } catch (exception: Exception) {
+            Cph.LOGGER.warn("Could not read the CoolPackHelper installation journal", exception)
+            emptyList()
         }
-    } catch (exception: Exception) {
-        Cph.LOGGER.warn("Could not read the CoolPackHelper installation journal", exception)
-        emptyList()
+        cachedRecords = loaded.detachedCopy()
+        return loaded.detachedCopy()
     }
 
     private fun save(records: List<InstallationRecord>) {
@@ -109,6 +115,7 @@ object InstallationJournal {
         } catch (_: Exception) {
             Files.move(temporary, journalPath, StandardCopyOption.REPLACE_EXISTING)
         }
+        cachedRecords = records.detachedCopy()
     }
 
     private fun pruneBackups(records: List<InstallationRecord>): List<InstallationRecord> {
@@ -182,4 +189,8 @@ object InstallationJournal {
         backups = backups.mapKeys { it.key.toAbsolutePath().normalize().toString() }
             .mapValues { it.value.toAbsolutePath().normalize().toString() },
     )
+}
+
+private fun List<InstallationRecord>.detachedCopy(): List<InstallationRecord> = map { record ->
+    record.copy(backups = record.backups.toMap())
 }

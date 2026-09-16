@@ -13,10 +13,9 @@ object Cph {
     val LOGGER: Logger = LogManager.getLogger(ID)
 
     init {
-        ConfigManager.load()
-
         runForDist(
             clientTarget = {
+                ConfigManager.load()
                 ClientBootstrap.register()
             },
             serverTarget = {

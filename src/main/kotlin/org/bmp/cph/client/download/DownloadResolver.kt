@@ -12,10 +12,11 @@ import org.bmp.cph.config.DownloadSourceType
 import org.bmp.cph.config.DownloadTrustLevel
 import org.bmp.cph.config.RequiredMod
 import org.bmp.cph.config.validHttpUri
+import org.bmp.cph.util.CphExecutors
+import org.bmp.cph.util.CphHttpClients
 import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
-import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
@@ -25,12 +26,9 @@ import java.util.concurrent.CompletableFuture
 object DownloadResolver {
     private const val MAX_API_RESPONSE_BYTES = 4 * 1024 * 1024
     private val gson = Gson()
-    private val http = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(12))
-        .followRedirects(HttpClient.Redirect.NEVER)
-        .build()
+    private val http = CphHttpClients.api
 
-    fun resolveAsync(request: DownloadRequest): CompletableFuture<ResolvedDownload> = CompletableFuture.supplyAsync {
+    fun resolveAsync(request: DownloadRequest): CompletableFuture<ResolvedDownload> = CphExecutors.supply(CphExecutors.network) {
         request.source?.let { resolve(request.mod, it) } ?: resolveBest(request.mod)
     }
 

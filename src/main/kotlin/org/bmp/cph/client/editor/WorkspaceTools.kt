@@ -11,8 +11,8 @@ import net.minecraft.network.chat.Component
 import org.bmp.cph.client.curseforge.CurseForgeApiSupport
 import org.bmp.cph.config.ConfigManager
 import org.bmp.cph.config.MenuText
+import org.bmp.cph.util.CphExecutors
 import java.net.URI
-import java.util.concurrent.CompletableFuture
 import kotlin.math.min
 import kotlin.math.sin
 
@@ -28,8 +28,9 @@ internal class MenuTranslationsWindow(workspace: EditorWorkspaceScreen) : Worksp
     private var selectedKey: String? = working.keys.firstOrNull()
     private var localeValue = selectedKey.orEmpty()
     private var savedDraft = currentDraft()
+    private var documentDirty = false
 
-    override fun isDocumentDirty() = currentDraft() != savedDraft
+    override fun isDocumentDirty() = documentDirty
 
     override fun commitShortcut(): Boolean {
         apply()
@@ -55,12 +56,16 @@ internal class MenuTranslationsWindow(workspace: EditorWorkspaceScreen) : Worksp
         if (key != null && value != null) {
             val rightX = bodyLeft + leftWidth + 7
             val rightWidth = bodyRight - rightX
-            field(rightX, top, rightWidth - 26, localeValue, 32) { localeValue = it }
+            field(rightX, top, rightWidth - 26, localeValue, 32) {
+                localeValue = it
+                updateDirtyState()
+            }
             button(Component.literal("×"), bodyRight - 22, top + 1, 21, ::removeLocale, TechButtonStyle.DANGER, tr("workspace.translation.delete.hint"))
             TranslationFieldsList(
                 minecraft, rightWidth, (bottom - top - 26).coerceAtLeast(38), top + 26,
                 (rightWidth - 8).coerceAtLeast(100), TEXT_FIELDS, value,
-            ) {}.also { it.x = rightX; add(it) }
+                ::updateDirtyState,
+            ).also { it.x = rightX; add(it) }
         }
         button(tr("close"), bodyRight - 177, bodyBottom - 20, 78, { workspace.closeWindow(this) }, TechButtonStyle.GHOST, tr("workspace.close_window.hint"))
         button(tr("save"), bodyRight - 94, bodyBottom - 20, 90, ::apply, TechButtonStyle.PRIMARY, tr("workspace.save_window.hint"))
@@ -90,6 +95,7 @@ internal class MenuTranslationsWindow(workspace: EditorWorkspaceScreen) : Worksp
         working[code] = JsonObject()
         selectedKey = code
         localeValue = code
+        updateDirtyState()
         rebuild()
     }
 
@@ -97,6 +103,7 @@ internal class MenuTranslationsWindow(workspace: EditorWorkspaceScreen) : Worksp
         selectedKey?.let(working::remove)
         selectedKey = working.keys.firstOrNull()
         localeValue = selectedKey.orEmpty()
+        updateDirtyState()
         rebuild()
     }
 
@@ -107,6 +114,7 @@ internal class MenuTranslationsWindow(workspace: EditorWorkspaceScreen) : Worksp
         val value = working.remove(old) ?: return
         working[normalized] = value
         selectedKey = normalized
+        updateDirtyState()
     }
 
     private fun apply() {
@@ -114,8 +122,14 @@ internal class MenuTranslationsWindow(workspace: EditorWorkspaceScreen) : Worksp
         workspace.editorSession.ensureMenu().translations = working.mapValues { gson.fromJson(it.value, MenuText::class.java) }.toMutableMap()
         workspace.editorSession.markDirty()
         savedDraft = currentDraft()
+        documentDirty = false
         markDraftCommitted()
         rebuild()
+    }
+
+    /** Recompute the structural snapshot only when a control actually changes data. */
+    private fun updateDirtyState() {
+        documentDirty = currentDraft() != savedDraft
     }
 
     private fun currentDraft(): String {
@@ -171,7 +185,7 @@ internal class LocalImportWindow(workspace: EditorWorkspaceScreen) : WorkspaceWi
 
     private fun start() {
         started = true
-        CompletableFuture.supplyAsync(PlatformScanner::inspectModsFolder).whenComplete { value, exception ->
+        CphExecutors.supply(CphExecutors.disk, PlatformScanner::inspectModsFolder).whenComplete { value, exception ->
             Minecraft.getInstance().execute {
                 artifacts = value ?: emptyList()
                 error = exception?.cause?.message ?: exception?.message

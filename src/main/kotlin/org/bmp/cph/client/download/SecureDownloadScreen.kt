@@ -15,6 +15,7 @@ import org.bmp.cph.client.editor.TechButton
 import org.bmp.cph.client.editor.TechButtonStyle
 import org.bmp.cph.config.DownloadLink
 import org.bmp.cph.config.DownloadTrustLevel
+import org.bmp.cph.util.CphExecutors
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import kotlin.math.roundToInt
@@ -190,11 +191,15 @@ class SecureDownloadScreen private constructor(
         results = null
         batchId = UUID.randomUUID().toString()
         rebuildWidgets()
-        CompletableFuture.supplyAsync {
+        CphExecutors.supply(CphExecutors.download) {
+            val batchContext = SecureDownloadManager.createBatchContext()
             downloads.map { download ->
-                SecureDownloadManager.install(download, batchId!!) { value ->
-                    Minecraft.getInstance().execute { progress = value }
-                }
+                SecureDownloadManager.install(
+                    download,
+                    batchId!!,
+                    { value -> Minecraft.getInstance().execute { progress = value } },
+                    batchContext,
+                )
             }
         }.whenComplete { values, exception ->
             Minecraft.getInstance().execute {

@@ -6,10 +6,11 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import org.bmp.cph.client.download.DownloadSecurity
 import org.bmp.cph.config.DownloadSourceType
+import org.bmp.cph.util.CphExecutors
+import org.bmp.cph.util.CphHttpClients
 import java.net.InetAddress
 import java.net.URI
 import java.net.URLEncoder
-import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
@@ -39,10 +40,7 @@ object TranslationService {
     private const val MAX_RESPONSE_BYTES = 1024 * 1024
     private const val MAX_REDIRECTS = 3
     private val gson = Gson()
-    private val http = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(12))
-        .followRedirects(HttpClient.Redirect.NEVER)
-        .build()
+    private val http = CphHttpClients.api
 
     fun translateAsync(
         provider: TranslationProvider,
@@ -51,14 +49,14 @@ object TranslationService {
         text: String,
         sourceLocale: String,
         targetLocale: String,
-    ): CompletableFuture<String> = CompletableFuture.supplyAsync {
+    ): CompletableFuture<String> = CphExecutors.supply(CphExecutors.network) {
         require(text.isNotBlank()) { tr("translation.error.empty_source").string }
         require(text.length <= MAX_TEXT_LENGTH) { tr("translation.error.too_long", MAX_TEXT_LENGTH).string }
         val source = languageCode(sourceLocale)
         val target = languageCode(targetLocale)
         require(source != target) { tr("translation.error.same_language").string }
         if (provider == TranslationProvider.MYMEMORY) {
-            return@supplyAsync translateWithMyMemory(text, source, target)
+            return@supply translateWithMyMemory(text, source, target)
         }
         val prepared = prepareRequest(provider, endpoint, apiKey, text, source, target)
         var uri = prepared.uri
@@ -96,7 +94,7 @@ object TranslationService {
                 }
                 error(tr("translation.error.http", response.statusCode(), detail ?: tr("error.unknown")).string)
             }
-            return@supplyAsync parseTranslation(provider, responseBody)
+            return@supply parseTranslation(provider, responseBody)
                 ?.trim()?.takeIf(String::isNotBlank)
                 ?: error(tr("translation.error.empty_response").string)
         }
@@ -108,7 +106,7 @@ object TranslationService {
         provider: TranslationProvider,
         endpoint: String?,
         apiKey: String?,
-    ): CompletableFuture<Unit> = CompletableFuture.supplyAsync {
+    ): CompletableFuture<Unit> = CphExecutors.supply(CphExecutors.network) {
         val key = apiKey?.trim().orEmpty()
         val probe = when (provider) {
             TranslationProvider.LIBRE_TRANSLATE -> {
@@ -159,7 +157,7 @@ object TranslationService {
                 val detail = errorDetail(String(bytes, StandardCharsets.UTF_8))?.take(240)
                 error(tr("translation.error.http", response.statusCode(), detail ?: tr("error.unknown")).string)
             }
-            return@supplyAsync Unit
+            return@supply Unit
         }
         @Suppress("UNREACHABLE_CODE")
         Unit

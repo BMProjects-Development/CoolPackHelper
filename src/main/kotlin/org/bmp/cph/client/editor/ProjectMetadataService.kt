@@ -11,10 +11,11 @@ import org.bmp.cph.config.DownloadSourceType
 import org.bmp.cph.config.ProjectDonationLink
 import org.bmp.cph.config.ProjectLinks
 import org.bmp.cph.config.RequiredMod
+import org.bmp.cph.util.CphExecutors
+import org.bmp.cph.util.CphHttpClients
 import org.bmp.cph.config.validHttpUri
 import java.net.URI
 import java.net.URLEncoder
-import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
@@ -40,28 +41,37 @@ enum class MetadataApplyMode {
 object ProjectMetadataService {
     private const val MAX_API_RESPONSE_BYTES = 4 * 1024 * 1024
     private const val CACHE_TTL_MILLIS = 10 * 60 * 1000L
+    private const val MAX_CACHE_ENTRIES = 256
     private val gson = Gson()
     private data class CacheEntry(val loadedAt: Long, val metadata: ProjectMetadata)
     private val cache = ConcurrentHashMap<String, CacheEntry>()
-    private val http = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(12))
-        .followRedirects(HttpClient.Redirect.NEVER)
-        .build()
+    private val http = CphHttpClients.api
 
     fun fetchAsync(source: DownloadLink): CompletableFuture<ProjectMetadata> {
         val cacheKey = "${source.resolvedType()}:${source.projectId.orEmpty()}:${source.url.orEmpty()}"
         cache[cacheKey]?.takeIf { System.currentTimeMillis() - it.loadedAt < CACHE_TTL_MILLIS }?.let {
             return CompletableFuture.completedFuture(it.metadata)
         }
-        return CompletableFuture.supplyAsync {
+        return CphExecutors.supply(CphExecutors.network) {
             val metadata = when (source.resolvedType()) {
             DownloadSourceType.MODRINTH -> fetchModrinth(source)
             DownloadSourceType.CURSEFORGE -> fetchCurseForge(source)
             else -> error(cphMessage("cph.metadata.error.unsupported_source"))
             }
-            cache[cacheKey] = CacheEntry(System.currentTimeMillis(), metadata)
+            cacheMetadata(cacheKey, metadata)
             metadata
         }
+    }
+
+    private fun cacheMetadata(key: String, metadata: ProjectMetadata) {
+        val now = System.currentTimeMillis()
+        if (cache.size >= MAX_CACHE_ENTRIES && !cache.containsKey(key)) {
+            cache.entries.removeIf { now - it.value.loadedAt >= CACHE_TTL_MILLIS }
+            if (cache.size >= MAX_CACHE_ENTRIES) {
+                cache.entries.minByOrNull { it.value.loadedAt }?.let { cache.remove(it.key, it.value) }
+            }
+        }
+        cache[key] = CacheEntry(now, metadata)
     }
 
     fun apply(

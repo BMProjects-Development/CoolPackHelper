@@ -7,14 +7,16 @@ import org.bmp.cph.Cph
 import org.bmp.cph.client.curseforge.CurseForgeApiSupport
 import org.bmp.cph.config.ModCategory
 import org.bmp.cph.config.RequiredMod
+import org.bmp.cph.util.CphExecutors
+import org.bmp.cph.util.CphHttpClients
 import org.bmp.cph.config.validHttpUri
 import java.net.URI
-import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.time.Duration
 import java.util.concurrent.CompletableFuture
@@ -69,18 +71,19 @@ data class PlatformScanReport(
 )
 
 object PlatformScanner {
+    private const val CACHE_SCHEMA_VERSION = 1
+    private const val MAX_SCAN_CACHE_BYTES = 16L * 1024L * 1024L
     private const val MAX_METADATA_BYTES = 1024 * 1024
     private const val MAX_API_RESPONSE_BYTES = 8 * 1024 * 1024
     private val gson = Gson()
-    private val http = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(15))
-        .followRedirects(HttpClient.Redirect.NEVER)
-        .build()
+    private val artifactCache = linkedMapOf<String, CachedArtifact>()
+    private var artifactCacheLoaded = false
+    private val http = CphHttpClients.api
 
     fun scanAsync(platform: ScanPlatform, curseForgeApiKey: String? = null): CompletableFuture<PlatformScanReport> =
-        CompletableFuture.supplyAsync {
+        CphExecutors.supply(CphExecutors.disk) {
             val artifacts = inspectModsFolder()
-            if (artifacts.isEmpty()) return@supplyAsync PlatformScanReport(platform, emptyList())
+            if (artifacts.isEmpty()) return@supply PlatformScanReport(platform, emptyList())
             try {
                 when (platform) {
                     ScanPlatform.MODRINTH -> scanModrinth(artifacts)
@@ -96,22 +99,131 @@ object PlatformScanner {
             }
         }
 
+    @Synchronized
     internal fun inspectModsFolder(): List<LocalModArtifact> {
         val directory = FMLPaths.MODSDIR.get()
         if (Files.notExists(directory)) return emptyList()
+        loadArtifactCache()
         val jars = Files.list(directory).use { stream ->
             stream.filter(Files::isRegularFile)
                 .filter { it.fileName.toString().endsWith(".jar", ignoreCase = true) }
                 .sorted()
                 .toList()
         }
-        return jars.mapNotNull { path ->
+        val currentPaths = jars.map { it.toAbsolutePath().normalize().toString() }.toSet()
+        var cacheChanged = artifactCache.keys.retainAll(currentPaths)
+        val artifacts = jars.mapNotNull { path ->
             try {
-                inspectJar(path).takeUnless { it.modId == Cph.ID }
+                val normalizedPath = path.toAbsolutePath().normalize()
+                val key = normalizedPath.toString()
+                val size = Files.size(normalizedPath)
+                val modified = Files.getLastModifiedTime(normalizedPath).toMillis()
+                val cached = artifactCache[key]
+                val artifact = if (cached != null && cached.size == size && cached.modified == modified) {
+                    cached.toArtifact(normalizedPath)
+                } else {
+                    inspectJar(normalizedPath).also {
+                        artifactCache[key] = CachedArtifact.from(it, size, modified)
+                        cacheChanged = true
+                    }
+                }
+                artifact.takeUnless { it.modId == Cph.ID }
             } catch (exception: Exception) {
                 Cph.LOGGER.warn("Skipping unreadable mod file {} during platform scan", path.fileName, exception)
                 null
             }
+        }
+        if (cacheChanged) saveArtifactCache()
+        return artifacts
+    }
+
+    private fun loadArtifactCache() {
+        if (artifactCacheLoaded) return
+        artifactCacheLoaded = true
+        val path = artifactCachePath()
+        try {
+            if (Files.notExists(path)) return
+            if (Files.size(path) > MAX_SCAN_CACHE_BYTES) return
+            val file = Files.newBufferedReader(path, StandardCharsets.UTF_8).use {
+                gson.fromJson(it, ScanCacheFile::class.java)
+            } ?: return
+            if (file.schemaVersion != CACHE_SCHEMA_VERSION) return
+            file.entries.forEach { entry ->
+                if (entry.path.isNotBlank() && entry.sha1.isNotBlank()) artifactCache[entry.path] = entry
+            }
+        } catch (exception: Exception) {
+            Cph.LOGGER.debug("Could not read the local platform scan cache", exception)
+            artifactCache.clear()
+        }
+    }
+
+    private fun saveArtifactCache() {
+        val path = artifactCachePath()
+        try {
+            Files.createDirectories(path.parent)
+            val temporary = path.resolveSibling("${path.fileName}.tmp")
+            Files.newBufferedWriter(temporary, StandardCharsets.UTF_8).use {
+                gson.toJson(ScanCacheFile(entries = artifactCache.values.toMutableList()), it)
+            }
+            try {
+                Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: Exception) {
+                Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING)
+            }
+        } catch (exception: Exception) {
+            Cph.LOGGER.debug("Could not persist the local platform scan cache", exception)
+        }
+    }
+
+    private fun artifactCachePath(): Path = FMLPaths.GAMEDIR.get()
+        .resolve("local")
+        .resolve("coolpackhelper")
+        .resolve("platform-scan-cache.json")
+
+    private class ScanCacheFile(
+        var schemaVersion: Int = CACHE_SCHEMA_VERSION,
+        var entries: MutableList<CachedArtifact> = mutableListOf(),
+    )
+
+    private class CachedArtifact(
+        var path: String = "",
+        var size: Long = -1,
+        var modified: Long = -1,
+        var fileName: String = "",
+        var sha1: String = "",
+        var curseForgeFingerprint: Long = 0,
+        var name: String = "",
+        var modId: String? = null,
+        var version: String? = null,
+        var description: String? = null,
+        var homepage: String? = null,
+    ) {
+        fun toArtifact(resolvedPath: Path) = LocalModArtifact(
+            path = resolvedPath,
+            fileName = fileName,
+            sha1 = sha1,
+            curseForgeFingerprint = curseForgeFingerprint,
+            name = name,
+            modId = modId,
+            version = version,
+            description = description,
+            homepage = homepage,
+        )
+
+        companion object {
+            fun from(artifact: LocalModArtifact, size: Long, modified: Long) = CachedArtifact(
+                path = artifact.path.toAbsolutePath().normalize().toString(),
+                size = size,
+                modified = modified,
+                fileName = artifact.fileName,
+                sha1 = artifact.sha1,
+                curseForgeFingerprint = artifact.curseForgeFingerprint,
+                name = artifact.name,
+                modId = artifact.modId,
+                version = artifact.version,
+                description = artifact.description,
+                homepage = artifact.homepage,
+            )
         }
     }
 

@@ -27,6 +27,10 @@ object ConfigManager {
     var validationIssues: List<ConfigIssue> = emptyList()
         private set
 
+    @Volatile
+    private var authorSettingsCache: AuthorSettings? = null
+    private var authorSettingsModified = Long.MIN_VALUE
+
     val configPath: Path
         get() = FMLPaths.CONFIGDIR.get().resolve(CONFIG_FILE)
     val configDirectory: Path
@@ -87,20 +91,32 @@ object ConfigManager {
         return issues
     }
 
-    fun loadAuthorSettings(): AuthorSettings = try {
-        if (Files.notExists(authorSettingsPath)) AuthorSettings()
-        else Files.newBufferedReader(authorSettingsPath, StandardCharsets.UTF_8).use {
-            gson.fromJson(it, AuthorSettings::class.java)
-        } ?: AuthorSettings()
-    } catch (exception: Exception) {
-        Cph.LOGGER.warn("Could not read local CoolPackHelper author settings", exception)
-        AuthorSettings()
+    @Synchronized
+    fun loadAuthorSettings(): AuthorSettings {
+        val modified = runCatching {
+            if (Files.exists(authorSettingsPath)) Files.getLastModifiedTime(authorSettingsPath).toMillis() else -1L
+        }.getOrDefault(Long.MIN_VALUE)
+        authorSettingsCache?.takeIf { modified == authorSettingsModified }?.let { return it.detachedCopy() }
+        val loaded = try {
+            if (Files.notExists(authorSettingsPath)) AuthorSettings()
+            else Files.newBufferedReader(authorSettingsPath, StandardCharsets.UTF_8).use {
+                gson.fromJson(it, AuthorSettings::class.java)
+            } ?: AuthorSettings()
+        } catch (exception: Exception) {
+            Cph.LOGGER.warn("Could not read local CoolPackHelper author settings", exception)
+            AuthorSettings()
+        }
+        authorSettingsCache = loaded.detachedCopy()
+        authorSettingsModified = modified
+        return loaded.detachedCopy()
     }
 
     @Synchronized
     fun saveAuthorSettings(settings: AuthorSettings) {
         try {
             writeJson(authorSettingsPath, settings)
+            authorSettingsCache = settings.detachedCopy()
+            authorSettingsModified = Files.getLastModifiedTime(authorSettingsPath).toMillis()
         } catch (exception: Exception) {
             Cph.LOGGER.error("Could not save local CoolPackHelper author settings", exception)
         }
@@ -247,7 +263,15 @@ object ConfigManager {
     private fun writeSchemaFile() {
         val target = configDirectory.resolve(SCHEMA_FILE)
         ConfigManager::class.java.getResourceAsStream("/$SCHEMA_FILE")?.use { input ->
-            Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING)
+            val bundled = input.readAllBytes()
+            if (Files.exists(target) && Files.size(target) == bundled.size.toLong() && Files.readAllBytes(target).contentEquals(bundled)) return
+            val temporary = target.resolveSibling("${target.fileName}.tmp")
+            Files.write(temporary, bundled)
+            try {
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING)
+            }
         } ?: Cph.LOGGER.warn("Bundled CoolPackHelper JSON schema is missing")
     }
 
@@ -271,4 +295,8 @@ data class AuthorSettings(
     var translationRememberApiKey: Boolean? = null,
     // Kept only to migrate settings created before provider support.
     var translationApiKey: String? = null,
+)
+
+private fun AuthorSettings.detachedCopy(): AuthorSettings = copy(
+    translationApiKeys = translationApiKeys?.toMutableMap(),
 )

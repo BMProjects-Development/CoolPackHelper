@@ -12,8 +12,8 @@ import net.minecraft.network.chat.Style
 import net.minecraft.util.FormattedCharSequence
 import org.bmp.cph.config.ConfigManager
 import org.bmp.cph.client.curseforge.CurseForgeApiSupport
+import org.bmp.cph.util.CphExecutors
 import java.net.URI
-import java.util.concurrent.CompletableFuture
 import kotlin.math.sin
 
 class CurseForgeKeyScreen(
@@ -287,7 +287,7 @@ class LocalImportScreen(
     override fun init() {
         if (!started) {
             started = true
-            CompletableFuture.supplyAsync(PlatformScanner::inspectModsFolder).whenComplete { result, exception ->
+            CphExecutors.supply(CphExecutors.disk, PlatformScanner::inspectModsFolder).whenComplete { result, exception ->
                 Minecraft.getInstance().execute {
                     artifacts = result ?: emptyList()
                     errorMessage = exception?.cause?.message ?: exception?.message

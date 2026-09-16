@@ -26,6 +26,8 @@ class MissingModsScreen(
     private var selectedTab: RequirementTab = RequirementTab.ALL,
     private val markPolicyOnClose: Boolean = false,
 ) : EditorScreenBase(Component.literal(text.title), parent) {
+    private val requiredResults = results.filter { it.mod.resolvedCategory() == ModCategory.REQUIRED }
+    private val recommendedResults = results.filter { it.mod.resolvedCategory() == ModCategory.RECOMMENDED }
     private var compactHeader = false
     private var listTop = 64
     private var listBottom = 100
@@ -84,8 +86,8 @@ class MissingModsScreen(
     }
 
     override fun renderEditorContent(guiGraphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        val required = results.count { it.mod.resolvedCategory() == ModCategory.REQUIRED }
-        val recommended = results.size - required
+        val required = requiredResults.size
+        val recommended = recommendedResults.size
         val summary = text.summary
             .replace("{required}", required.toString())
             .replace("{recommended}", recommended.toString())
@@ -295,8 +297,8 @@ class MissingModsScreen(
 
     private fun filteredResults(): List<ModCheckResult> = when (selectedTab) {
         RequirementTab.ALL -> results
-        RequirementTab.REQUIRED -> results.filter { it.mod.resolvedCategory() == ModCategory.REQUIRED }
-        RequirementTab.RECOMMENDED -> results.filter { it.mod.resolvedCategory() == ModCategory.RECOMMENDED }
+        RequirementTab.REQUIRED -> requiredResults
+        RequirementTab.RECOMMENDED -> recommendedResults
     }
 }
 
