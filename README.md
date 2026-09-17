@@ -60,9 +60,9 @@ CoolPackHelper treats a link and a safe automatic installation as different thin
 
 Trust levels are visible before installation:
 
-- **Platform** — resolved through Modrinth or CurseForge metadata and constrained to their official delivery hosts.
-- **Repository** — a GitHub Release asset with a SHA-256 digest; the player must review the repository and owner.
-- **Unverified** — a third-party HTTPS file with a configured SHA-256 or SHA-512 digest; it requires an explicit individual decision and is excluded from bulk installation.
+- **Platform** - resolved through Modrinth or CurseForge metadata and constrained to their official delivery hosts.
+- **Repository** - a GitHub Release asset with a SHA-256 digest; the player must review the repository and owner.
+- **Unverified** - a third-party HTTPS file with a configured SHA-256 or SHA-512 digest; it requires an explicit individual decision and is excluded from bulk installation.
 
 A digest proves that the downloaded bytes match the expected bytes; it does not prove that those bytes are harmless. Pack authors remain responsible for the sources they configure, and players remain in control of non-platform downloads.
 
