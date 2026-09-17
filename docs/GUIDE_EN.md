@@ -1,4 +1,4 @@
-# CoolPackHelper 1.0 — Complete Guide
+# CoolPackHelper 1.0 - Complete Guide
 
 [Back to README](../README.md) · [Development roadmap](ROADMAP_EN.md) · [Русская версия](GUIDE_RU.md)
 
@@ -133,10 +133,10 @@ Configure:
 
 The list supports search and sorting. A mod document contains four tabs:
 
-- **General** — name, mod ID, version range, filename pattern, enabled state, and category;
-- **Descriptions** — one text per locale and optional machine-translation drafts;
-- **Downloads** — any number of sources; basic fields are shown first and advanced integrity fields are opt-in;
-- **Metadata** — icon, authors, license, homepage, source, issues, wiki, Discord, and donation links, plus platform import.
+- **General** - name, mod ID, version range, filename pattern, enabled state, and category;
+- **Descriptions** - one text per locale and optional machine-translation drafts;
+- **Downloads** - any number of sources; basic fields are shown first and advanced integrity fields are opt-in;
+- **Metadata** - icon, authors, license, homepage, source, issues, wiki, Discord, and donation links, plus platform import.
 
 Adding a source creates a temporary draft. Canceling it removes the new source without affecting the rest of the mod document.
 
@@ -168,8 +168,8 @@ When `modId` is configured, a similarly named JAR does not satisfy the entry. Th
 
 `filePattern` is used as the detector only when `modId` is blank. It checks filenames directly inside `mods` and supports:
 
-- `*` — any number of characters;
-- `?` — one character;
+- `*` - any number of characters;
+- `?` - one character;
 - case-insensitive matching.
 
 Example: `private-addon-1.21.1-*.jar`.
@@ -193,8 +193,8 @@ Use the actual version reported by NeoForge. Platform marketing versions and fil
 
 `category` controls presentation:
 
-- `REQUIRED` — red accent and the required label;
-- `RECOMMENDED` — amber accent and the recommended label.
+- `REQUIRED` - red accent and the required label;
+- `RECOMMENDED` - amber accent and the recommended label.
 
 Both categories are guidance: the player may close the screen. A pack should explain the consequence of skipping a recommended entry in its localized description.
 
