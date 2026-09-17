@@ -1,4 +1,4 @@
-# CoolPackHelper — Development Roadmap
+# CoolPackHelper - Development Roadmap
 
 [Back to README](../README.md) · [Complete guide](GUIDE_EN.md) · [Русская версия](ROADMAP_RU.md)
 
@@ -6,11 +6,11 @@ This document describes the intended direction of CoolPackHelper after the first
 
 ## Status labels
 
-- **Release gate** — required before the current release can be considered ready.
-- **Planned** — fits the product direction and has a reasonably clear design.
-- **Candidate** — useful, but its final scope or priority still needs validation.
-- **Research** — technically or legally uncertain; prototype before committing.
-- **Deferred** — deliberately kept out of the near-term scope.
+- **Release gate** - required before the current release can be considered ready.
+- **Planned** - fits the product direction and has a reasonably clear design.
+- **Candidate** - useful, but its final scope or priority still needs validation.
+- **Research** - technically or legally uncertain; prototype before committing.
+- **Deferred** - deliberately kept out of the near-term scope.
 
 ## Product direction
 
@@ -22,18 +22,18 @@ The mod should help authors produce a reproducible pack and help players underst
 
 Every future module should follow these rules:
 
-1. **Explicit consent** — installation, option replacement, online presence, and external links must be visible and reversible where possible.
-2. **Least privilege** — network features receive only the data they need; credentials remain local.
-3. **Trust is not safety** — a platform, repository, CDN, or hash changes the confidence level but never proves harmlessness.
-4. **Preview before apply** — show a diff or review screen before changing player files/settings.
-5. **Back up before replacement** — changes to files or user preferences need a bounded recovery path.
-6. **No hidden promotion** — presets and first-party recommendations must be clearly labeled, optional, and removable.
-7. **Local-first authoring** — authors should be able to create and inspect pack data without a mandatory cloud account.
-8. **Accessible, responsive UI** — keyboard navigation, narration, tooltips, scroll behavior, small windows, and large GUI scale are release criteria.
-9. **Schema-driven data** — new features need versioned formats, validation, migration, and readable export.
-10. **No silent remote code/config execution** — remote manifests must be authenticated and reviewed; downloaded content never bypasses the normal checks.
+1. **Explicit consent** - installation, option replacement, online presence, and external links must be visible and reversible where possible.
+2. **Least privilege** - network features receive only the data they need; credentials remain local.
+3. **Trust is not safety** - a platform, repository, CDN, or hash changes the confidence level but never proves harmlessness.
+4. **Preview before apply** - show a diff or review screen before changing player files/settings.
+5. **Back up before replacement** - changes to files or user preferences need a bounded recovery path.
+6. **No hidden promotion** - presets and first-party recommendations must be clearly labeled, optional, and removable.
+7. **Local-first authoring** - authors should be able to create and inspect pack data without a mandatory cloud account.
+8. **Accessible, responsive UI** - keyboard navigation, narration, tooltips, scroll behavior, small windows, and large GUI scale are release criteria.
+9. **Schema-driven data** - new features need versioned formats, validation, migration, and readable export.
+10. **No silent remote code/config execution** - remote manifests must be authenticated and reviewed; downloaded content never bypasses the normal checks.
 
-## Milestone 0 — Finish and harden 1.0
+## Milestone 0 - Finish and harden 1.0
 
 **Status: Release gate**
 
@@ -63,7 +63,7 @@ Before the public release, the remaining work should concentrate on quality rath
 
 New large subsystems should wait until this baseline is stable.
 
-## Milestone 1 — Shared content requirements
+## Milestone 1 - Shared content requirements
 
 **Status: Planned**
 
@@ -105,7 +105,7 @@ The implementation should extract reusable services for:
 
 The UI should still present separate Mods, Resource Packs, and Shaders sections. A single giant mixed list would be harder for players to understand.
 
-## Milestone 2 — Pack defaults and player settings
+## Milestone 2 - Pack defaults and player settings
 
 **Status: Planned, high risk of destructive UX**
 
@@ -144,7 +144,7 @@ Modded keys may disappear or change IDs between versions. Missing mappings must 
 
 Native profiles should remain the source of truth. A later adapter may import from or export to Default Options when that mod is installed, but CoolPackHelper should not create a hard dependency or overwrite its data without review.
 
-## Milestone 3 — Secure manifests and CDN delivery
+## Milestone 3 - Secure manifests and CDN delivery
 
 **Status: Candidate / security research**
 
@@ -174,7 +174,7 @@ Open design questions:
 
 Do not implement unsigned remote configuration updates or a global allowlist that lets arbitrary authors turn unknown files into “trusted” downloads.
 
-## Milestone 4 — Modpack identity and Discord presence
+## Milestone 4 - Modpack identity and Discord presence
 
 **Status: Candidate**
 
@@ -203,7 +203,7 @@ Allow an author to define a pack-aware window title and optional icon with a pla
 
 This milestone can be developed independently after 1.0 stabilization, but it should not delay content-management work.
 
-## Milestone 5 — Reusable author presets
+## Milestone 5 - Reusable author presets
 
 **Status: Deferred until the content/profile formats stabilize**
 
@@ -233,7 +233,7 @@ BMP Translations may appear as an optional, clearly labeled BMP recommendation f
 - remote catalogs require signed manifests and version pinning;
 - authors can disable first-party/community catalogs completely.
 
-## Milestone 6 — Pack diagnostics and dependency graph
+## Milestone 6 - Pack diagnostics and dependency graph
 
 **Status: Candidate**
 
@@ -250,7 +250,7 @@ Potential author tools:
 
 Diagnostics must separate facts from heuristics. “Likely client-only” is not equivalent to “safe to remove from a server.”
 
-## Milestone 7 — Server pack builder
+## Milestone 7 - Server pack builder
 
 **Status: Research / late roadmap**
 
@@ -270,7 +270,7 @@ Proposed workflow:
 
 The builder should not claim that a generated server is production-ready solely because it starts once. Network configuration, permissions, backups, performance, security, and hosting remain administrator responsibilities.
 
-## Milestone 8 — Automatic modpack changelog generator
+## Milestone 8 - Automatic modpack changelog generator
 
 **Status: Research / very late roadmap**
 
@@ -362,18 +362,18 @@ Support for another Minecraft version should be treated as a tested release line
 
 Future work should preserve clear module boundaries:
 
-- **core schema** — versioned author data and migration;
-- **inventory** — local mods/packs/shaders/options inspection;
-- **requirements** — satisfaction and status evaluation;
-- **metadata** — platform imports and cache;
-- **resolver** — platform/repository/direct source resolution;
-- **security** — URI, DNS, redirect, digest, archive, and identity checks;
-- **transactions** — staging, atomic application, backup, journal, rollback;
-- **profiles** — resource-pack order and selected options/key mappings;
-- **snapshots** — normalized, versioned release inventories and comparison bases;
-- **diff/reporting** — semantic adapters, review state, changelog templates, and exports;
-- **workspace UI** — authoring and validation;
-- **player UI** — preview, consent, explanation, and recovery.
+- **core schema** - versioned author data and migration;
+- **inventory** - local mods/packs/shaders/options inspection;
+- **requirements** - satisfaction and status evaluation;
+- **metadata** - platform imports and cache;
+- **resolver** - platform/repository/direct source resolution;
+- **security** - URI, DNS, redirect, digest, archive, and identity checks;
+- **transactions** - staging, atomic application, backup, journal, rollback;
+- **profiles** - resource-pack order and selected options/key mappings;
+- **snapshots** - normalized, versioned release inventories and comparison bases;
+- **diff/reporting** - semantic adapters, review state, changelog templates, and exports;
+- **workspace UI** - authoring and validation;
+- **player UI** - preview, consent, explanation, and recovery.
 
 Each new content type should reuse the security and transaction layers rather than implementing a second downloader.
 
