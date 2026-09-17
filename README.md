@@ -29,8 +29,8 @@ Choose a complete guide:
 
 Future development and design decisions are tracked separately:
 
-- [Development roadmap — English](docs/ROADMAP_EN.md)
-- [План развития — русский](docs/ROADMAP_RU.md)
+- [Development roadmap - English](docs/ROADMAP_EN.md)
+- [План развития - русский](docs/ROADMAP_RU.md)
 
 The guides cover installation, the player workflow, the author workspace, every configuration section, platform scanning, metadata import, translation providers, download security, backups, migration, troubleshooting, and release preparation.
 
