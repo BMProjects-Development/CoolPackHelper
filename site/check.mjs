@@ -26,12 +26,17 @@ for (const file of files) {
   const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
   assert.equal(ids.length, new Set(ids).size, `Duplicate anchor in ${file}`);
   pages.set(path.resolve(root, file), { html, ids: new Set(ids) });
+  assert.ok(html.includes('<meta name="cph-build" content="'), `Missing build version in ${file}`);
+  for (const [, asset] of html.matchAll(/(?:href|src)="((?:\.\.\/)?assets\/(?:style\.css|theme\.js|site\.js|redirect\.js|cph_logo_new\.png)[^"]*)"/g)) {
+    assert.ok(asset.includes('?v='), `Unversioned asset ${asset} in ${file}`);
+  }
 }
 let links = 0;
 for (const [file, { html }] of pages) {
   for (const [, value] of html.matchAll(/\b(?:href|src)="([^"]+)"/g)) {
     if (/^(?:[a-z]+:|\/\/)/i.test(value)) continue;
-    const [relative, hash] = value.split('#');
+    const [relativeWithQuery, hash] = value.split('#');
+    const relative = relativeWithQuery.split('?')[0];
     const target = relative ? path.resolve(path.dirname(file), decodeURIComponent(relative)) : file;
     assert.ok(target.startsWith(root + path.sep), `Link leaves site: ${value}`);
     await access(target);

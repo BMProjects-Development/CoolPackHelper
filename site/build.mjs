@@ -27,6 +27,8 @@ const organization = {
   emails: ['bmpland.main@gmail.com', 'bmpland.main@mail.ru'],
 };
 const origin = (process.env.SITE_URL || 'https://bmprojects-development.github.io/CoolPackHelper').replace(/\/$/, '');
+const buildVersion = (process.env.SITE_VERSION || process.env.GITHUB_SHA || 'dev').replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 40) || 'dev';
+const assetUrl = (relative) => `${relative}?v=${encodeURIComponent(buildVersion)}`;
 const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const plain = (value) => value.replace(/<[^>]*>/g, '').replace(/[*`]/g, '');
 const slug = (value) => plain(value).toLowerCase().replace(/[^\p{L}\p{N}_\-\s]/gu, '').replace(/ /g, '-');
@@ -118,21 +120,22 @@ function layout(lang, page, content, description, sourceFile) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <meta name="cph-build" content="${escape(buildVersion)}">
   <title>${escape(title)}</title>
   <meta name="description" content="${escape(description)}">
   <link rel="canonical" href="${origin}/${lang}/${page}.html">
   <link rel="alternate" hreflang="en" href="${origin}/en/${page}.html">
   <link rel="alternate" hreflang="ru" href="${origin}/ru/${page}.html">
   <link rel="alternate" hreflang="x-default" href="${origin}/en/${page}.html">
-  <link rel="icon" type="image/png" href="../assets/cph_logo_new.png">
-  <script src="../assets/theme.js"></script>
-  <link rel="stylesheet" href="../assets/style.css">
-  <script src="../assets/site.js" defer></script>
+  <link rel="icon" type="image/png" href="${assetUrl('../assets/cph_logo_new.png')}">
+  <script src="${assetUrl('../assets/theme.js')}"></script>
+  <link rel="stylesheet" href="${assetUrl('../assets/style.css')}">
+  <script src="${assetUrl('../assets/site.js')}" defer></script>
 </head>
 <body id="top">
   <a class="skip" href="#main">${t.skip}</a>
   <header class="header">
-    <a class="brand" href="index.html"><img class="brand-logo" src="../assets/cph_logo_new.png" width="48" height="48" alt="">CoolPackHelper</a>
+    <a class="brand" href="index.html"><img class="brand-logo" src="${assetUrl('../assets/cph_logo_new.png')}" width="48" height="48" alt="">CoolPackHelper</a>
     <nav aria-label="${t.nav}">${[['index', 'home'], ['roadmap', 'roadmap'], ['guide', 'guide']].map(([file, label]) => `<a href="${file}.html"${page === file ? ' aria-current="page"' : ''}>${t[label]}</a>`).join('')}</nav>
     <div class="header-controls"><nav class="language" aria-label="${t.language}"><a lang="en" hreflang="en" href="${lang === 'en' ? '' : '../en/'}${page}.html"${lang === 'en' ? ' aria-current="true"' : ' data-language-switch'}>EN</a><a lang="ru" hreflang="ru" href="${lang === 'ru' ? '' : '../ru/'}${page}.html"${lang === 'ru' ? ' aria-current="true"' : ' data-language-switch'}>RU</a></nav>
     <label class="theme-picker" hidden><span class="sr-only">${t.theme}</span><select class="theme-select" aria-label="${t.theme}"><option value="system">${t.systemTheme}</option><option value="light">${t.lightTheme}</option><option value="dark">${t.darkTheme}</option></select></label></div>
@@ -180,7 +183,7 @@ for (const lang of ['en', 'ru']) {
   <section class="roadmap-section" id="roadmap" aria-labelledby="roadmap-title"><div class="section-heading"><div><p class="eyebrow">${t.direction}</p><h2 id="roadmap-title">${t.planTitle}</h2><p>${t.planIntro}</p></div><a class="text-link" href="roadmap.html">${t.fullPlan} <span aria-hidden="true">↗</span></a></div><p class="roadmap-note">${t.disclaimer}</p><div class="milestones">${roadmap}</div></section>`;
   await writeFile(path.join(out, lang, 'index.html'), layout(lang, 'index', content, t.description, 'site/build.mjs'));
 }
-await writeFile(path.join(out, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>CoolPackHelper</title><link rel="icon" type="image/png" href="assets/cph_logo_new.png"><script src="assets/theme.js"></script><link rel="stylesheet" href="assets/style.css"><script src="assets/redirect.js" defer></script></head><body><main class="language-landing"><img class="brand-logo" src="assets/cph_logo_new.png" width="96" height="96" alt=""><h1>CoolPackHelper</h1><p><a class="button primary" href="en/index.html" lang="en">English ↗</a> <a class="button secondary" href="ru/index.html" lang="ru">Русский ↗</a></p></main></body></html>`);
+await writeFile(path.join(out, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="cph-build" content="${escape(buildVersion)}"><title>CoolPackHelper</title><link rel="icon" type="image/png" href="${assetUrl('assets/cph_logo_new.png')}"><script src="${assetUrl('assets/theme.js')}"></script><link rel="stylesheet" href="${assetUrl('assets/style.css')}"><script src="${assetUrl('assets/redirect.js')}" defer></script></head><body><main class="language-landing"><img class="brand-logo" src="${assetUrl('assets/cph_logo_new.png')}" width="96" height="96" alt=""><h1>CoolPackHelper</h1><p><a class="button primary" href="en/index.html?v=${encodeURIComponent(buildVersion)}" lang="en">English ↗</a> <a class="button secondary" href="ru/index.html?v=${encodeURIComponent(buildVersion)}" lang="ru">Русский ↗</a></p></main></body></html>`);
 await copyFile(path.join(root, 'redirect.js'), path.join(out, 'assets/redirect.js'));
 await writeFile(path.join(out, '.nojekyll'), '');
 console.log(`Built bilingual site: ${out}`);

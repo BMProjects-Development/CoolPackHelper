@@ -18,8 +18,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: true
+  group: pages
+  # Let an active publication finish instead of interrupting it mid-deploy.
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -36,6 +37,8 @@ jobs:
           cache-dependency-path: site/package-lock.json
       - run: npm ci --ignore-scripts
       - run: npm run build
+        env:
+          SITE_VERSION: ${{ github.sha }}
       - run: npm run check
       - uses: actions/upload-pages-artifact@v4
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
