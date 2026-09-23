@@ -38,6 +38,14 @@ h1, h2, h3, p { margin-top: 0; }
 .primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
 .primary:hover { background: #304454; }
 .secondary:hover { border-color: var(--ink); background: white; }
+.distribution { margin-top: 1.75rem; }
+.distribution-label { margin-bottom: .65rem; font-size: .875rem; font-weight: 650; color: var(--muted); }
+.distribution-button { min-width: 164px; color: #17212b; font-weight: 750; border-color: transparent; box-shadow: 0 2px 0 #0002; }
+.curseforge { background: #f58254; }
+.curseforge:hover { background: #ff996f; border-color: #a8431b; }
+.modrinth { background: #1bd96a; }
+.modrinth:hover { background: #53e58e; border-color: #127b40; }
+.distribution-note { margin: .75rem 0 0; max-width: 520px; font-size: .875rem; line-height: 1.55; color: var(--muted); }
 .platform { background: #192630; color: white; padding: 2rem; border-radius: 8px; border-top: 5px solid var(--accent); }
 .platform-label { text-transform: uppercase; font-size: .8rem; letter-spacing: .12em; color: #bdcbd5; }
 .platform strong { display: block; font-weight: 500; font-size: 1.6rem; line-height: 1.2; margin: 1.5rem 0; }

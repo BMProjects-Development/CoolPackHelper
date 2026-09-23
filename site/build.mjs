@@ -6,6 +6,12 @@ import { Marked } from 'marked';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const out = path.join(root, 'dist');
 const repo = 'https://github.com/BMProjects-Development/CoolPackHelper';
+const distribution = {
+  curseforge: 'https://www.curseforge.com/minecraft/mc-mods/coolpackhelper',
+  modrinth: 'https://modrinth.com/mod/coolpackhelper',
+  // Set to false once the Modrinth project has passed moderation.
+  modrinthPending: true,
+};
 const origin = (process.env.SITE_URL || 'https://bmprojects-development.github.io/CoolPackHelper').replace(/\/$/, '');
 const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const plain = (value) => value.replace(/<[^>]*>/g, '').replace(/[*`]/g, '');
@@ -17,6 +23,7 @@ const copy = {
     eyebrow: 'A companion for Minecraft modpacks', title: 'Better packs.\nClearer choices.',
     description: 'Help players understand missing mods. Give pack authors the tools to configure, explain, and maintain their requirements — right inside Minecraft.',
     releases: 'GitHub releases', readGuide: 'Read the guide', target: 'Current target', foundation: 'The 1.0 foundation',
+    downloads: 'Download the mod', modrinthNote: 'Modrinth: awaiting approval. The project page will become public after review.',
     features: [['Explain what’s missing', 'Required and recommended mods, version checks, and localized descriptions.'], ['Keep changes in view', 'Reviewed downloads, file verification, installation history, and rollback.'], ['Build inside the game', 'An author workspace for configuration, metadata import, and translations.']],
     direction: 'Where we’re heading', planTitle: 'The road ahead', planIntro: 'First, a stable 1.0. Then, more tools for building and maintaining modpacks.',
     disclaimer: 'This is a direction, not a release schedule. Priorities can change; candidates and research are not confirmed features.',
@@ -32,6 +39,7 @@ const copy = {
     eyebrow: 'Помощник для Minecraft-сборок', title: 'Продуманные сборки.\nПонятный выбор.',
     description: 'Помогайте игрокам разобраться с недостающими модами. Настраивайте требования, объясняйте изменения и поддерживайте сборку прямо в Minecraft.',
     releases: 'Релизы на GitHub', readGuide: 'Открыть руководство', target: 'Текущая платформа', foundation: 'Основа версии 1.0',
+    downloads: 'Скачать мод', modrinthNote: 'Modrinth: мод проходит проверку. Страница станет общедоступной после одобрения.',
     features: [['Понятные требования', 'Обязательные и рекомендуемые моды, проверка версий и описания на языке игрока.'], ['Изменения под контролем', 'Подтверждение загрузок, проверка файлов, история установки и откат.'], ['Рабочая область в игре', 'Настройка сборки, импорт метаданных и переводы в редакторе для автора.']],
     direction: 'Куда движется проект', planTitle: 'План развития', planIntro: 'Сначала — стабильная 1.0. Затем — новые инструменты создания и поддержки сборок.',
     disclaimer: 'Это направление развития, а не расписание релизов. Приоритеты могут меняться; кандидаты и исследования не гарантируют появления функции.',
@@ -135,7 +143,8 @@ for (const lang of ['en', 'ru']) {
     const label = status.split(/[,/]| until | до /)[0].trim();
     return `<a class="milestone ${tone}" href="roadmap.html#milestone-${number}"><span class="milestone-number"><span class="sr-only">${t.milestone} </span>${number.padStart(2, '0')}</span><h3>${escape(title)}</h3><span class="status" title="${escape(status)}">${escape(label)}</span><span class="row-arrow" aria-hidden="true">↗</span></a>`;
   }).join('');
-  const content = `<section class="hero"><div><p class="eyebrow">${t.eyebrow}</p><h1>${t.title.split('\n').map(escape).join('<br>')}</h1><p class="intro">${t.description}</p><div class="actions"><a class="button primary" href="guide.html">${t.readGuide} <span aria-hidden="true">↗</span></a><a class="button secondary" href="${repo}/releases">${t.releases} <span aria-hidden="true">↗</span></a></div></div><aside class="platform"><span class="platform-label">${t.target}</span><strong>Minecraft <span>1.21.1</span></strong><div><span>NeoForge 21.1.x</span><span>Java 21</span></div><span class="platform-caption">CoolPackHelper / 1.0</span></aside></section>
+  const downloadLinks = `<div class="distribution"><p class="distribution-label" id="downloads-label">${t.downloads}</p><div class="actions" role="group" aria-labelledby="downloads-label"><a class="button distribution-button curseforge" href="${distribution.curseforge}">CurseForge <span aria-hidden="true">↗</span></a><a class="button distribution-button modrinth" href="${distribution.modrinth}"${distribution.modrinthPending ? ' aria-describedby="modrinth-note"' : ''}>Modrinth <span aria-hidden="true">↗</span></a></div>${distribution.modrinthPending ? `<p class="distribution-note" id="modrinth-note">${t.modrinthNote}</p>` : ''}</div>`;
+  const content = `<section class="hero"><div><p class="eyebrow">${t.eyebrow}</p><h1>${t.title.split('\n').map(escape).join('<br>')}</h1><p class="intro">${t.description}</p><div class="actions"><a class="button primary" href="guide.html">${t.readGuide} <span aria-hidden="true">↗</span></a><a class="button secondary" href="${repo}/releases">${t.releases} <span aria-hidden="true">↗</span></a></div>${downloadLinks}</div><aside class="platform"><span class="platform-label">${t.target}</span><strong>Minecraft <span>1.21.1</span></strong><div><span>NeoForge 21.1.x</span><span>Java 21</span></div><span class="platform-caption">CoolPackHelper / 1.0</span></aside></section>
   <section class="foundation" aria-labelledby="foundation-title"><h2 class="eyebrow" id="foundation-title">${t.foundation}</h2><div class="features">${t.features.map(([title, body], i) => `<div><span class="feature-number">0${i + 1}</span><h3>${title}</h3><p>${body}</p></div>`).join('')}</div></section>
   <section class="roadmap-section" id="roadmap" aria-labelledby="roadmap-title"><div class="section-heading"><div><p class="eyebrow">${t.direction}</p><h2 id="roadmap-title">${t.planTitle}</h2><p>${t.planIntro}</p></div><a class="text-link" href="roadmap.html">${t.fullPlan} <span aria-hidden="true">↗</span></a></div><p class="roadmap-note">${t.disclaimer}</p><div class="milestones">${roadmap}</div></section>`;
   await writeFile(path.join(out, lang, 'index.html'), layout(lang, 'index', content, t.description, 'site/build.mjs'));

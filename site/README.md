@@ -21,6 +21,7 @@ Open <http://127.0.0.1:4173/CoolPackHelper/>. The preview uses the same reposito
 - `docs/ROADMAP_EN.md` and `docs/ROADMAP_RU.md` are the source of truth for the roadmap. Overview rows are extracted from milestone headings and their status lines automatically. Keep the `## Milestone N — …` / `## Этап N — …` and `**Status: …**` / `**Статус: …**` structure.
 - `docs/GUIDE_EN.md` and `docs/GUIDE_RU.md` produce the full documentation pages.
 - `site/build.mjs` contains the shared template and translated overview/interface text.
+- The `distribution` settings in `site/build.mjs` hold the CurseForge and Modrinth links. Set `modrinthPending` to `false` after approval to remove the review notice in both languages; the link is already active.
 - `site/style.css` contains the responsive design; `site/dist/` is generated and ignored by Git.
 - `site/cph_logo_new.png` is the supplied mod logo, used in the header, language landing page, and browser favicon.
 - `site/theme.js` applies the system light/dark preference before the page is painted. The header toggle saves an explicit choice in `cph-theme`, shared by both languages and all pages. Without browser storage, it still works for the current page.
