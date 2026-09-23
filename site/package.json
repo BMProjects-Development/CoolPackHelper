@@ -1,0 +1,16 @@
+{
+  "name": "coolpackhelper-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node check.mjs",
+    "preview": "node preview.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "marked": "18.0.14"
+  }
+}

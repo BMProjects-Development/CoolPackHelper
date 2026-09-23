@@ -4,7 +4,17 @@ on:
   push:
     branches:
       - "**"
+    paths-ignore:
+      - 'site/**'
+      - 'docs/**'
+      - 'README.md'
+      - '.github/workflows/pages.yml'
   pull_request:
+    paths-ignore:
+      - 'site/**'
+      - 'docs/**'
+      - 'README.md'
+      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:

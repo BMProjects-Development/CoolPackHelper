@@ -22,6 +22,11 @@ The mod also provides an in-game workspace for pack authors: configure requireme
 
 ## Documentation
 
+The bilingual project website brings together the roadmap and complete guides:
+
+- [Website — English](https://bmprojects-development.github.io/CoolPackHelper/en/index.html)
+- [Сайт — русский](https://bmprojects-development.github.io/CoolPackHelper/ru/index.html)
+
 Choose a complete guide:
 
 - [English documentation](docs/GUIDE_EN.md)
@@ -33,6 +38,8 @@ Future development and design decisions are tracked separately:
 - [План развития - русский](docs/ROADMAP_RU.md)
 
 The guides cover installation, the player workflow, the author workspace, every configuration section, platform scanning, metadata import, translation providers, download security, backups, migration, troubleshooting, and release preparation.
+
+Website development and GitHub Pages setup: [site/README.md](site/README.md).
 
 ## Quick start for players
 
