@@ -22,13 +22,14 @@ Open <http://127.0.0.1:4173/CoolPackHelper/>. The preview uses the same reposito
 - `docs/GUIDE_EN.md` and `docs/GUIDE_RU.md` produce the full documentation pages.
 - `site/build.mjs` contains the shared template and translated overview/interface text.
 - The `distribution` settings in `site/build.mjs` hold the CurseForge and Modrinth links. Set `modrinthPending` to `false` after approval to remove the review notice in both languages; the link is already active.
+- The `organization` settings in `site/build.mjs` are the source of truth for the BMProjects footer links and contact addresses shown on every page. Keep them aligned with the official BMProjects GitHub organization profile.
 - `site/style.css` contains the responsive design; `site/dist/` is generated and ignored by Git.
 - `site/cph_logo_new.png` is the supplied mod logo, used in the header, language landing page, and browser favicon.
-- `site/theme.js` applies the system light/dark preference before the page is painted. The header toggle saves an explicit choice in `cph-theme`, shared by both languages and all pages. Without browser storage, it still works for the current page.
+- `site/theme.js` applies the system light/dark preference before the page is painted. The header selector offers System, Light, and Dark modes and saves an explicit choice in `cph-theme-mode`, shared by both languages and all pages. System mode follows browser/OS changes live. Without browser storage, the selector still works for the current page.
 
 План и руководство берутся из существующих Markdown-файлов в `docs/`. Отдельную копию для сайта вести не нужно. Названия и статусы этапов на главной обновляются автоматически. Общие тексты интерфейса и главной на обоих языках находятся в `site/build.mjs`.
 
-Логотип `site/cph_logo_new.png` используется в шапке и как значок вкладки. Переключатель рядом с языком меняет светлую и тёмную темы. По умолчанию тема соответствует системной, ручной выбор сохраняется между страницами и языками. При запрете локального хранения переключатель работает до перехода на другую страницу.
+Логотип `site/cph_logo_new.png` используется в шапке и как значок вкладки. Переключатель рядом с языком предлагает режимы «Система», «Светлая» и «Тёмная». Режим «Система» выбран по умолчанию и реагирует на изменение темы браузера или ОС; ручной выбор сохраняется между страницами и языками. При запрете локального хранения переключатель работает до перехода на другую страницу.
 
 Both language routes work without JavaScript. At the root, JavaScript selects the saved language or the browser language (Russian for `ru`, English otherwise); without JavaScript, visitors see two language links. The language switch preserves the page and top-level section. Store only the explicit language preference in local storage; navigation still works when storage is blocked.
 

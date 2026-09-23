@@ -4,6 +4,21 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
+const organizationLinks = [
+  'https://github.com/BMProjects-Development',
+  'https://t.me/BMProjects',
+  'https://discord.gg/9GWKBVw3Ty',
+  'https://www.reddit.com/r/BMProjects/',
+  'https://vk.com/bmprojects',
+  'https://www.youtube.com/@TheBMProjects',
+  'https://www.tiktok.com/@bmprojectsoff',
+  'https://www.curseforge.com/members/thebarmaxx/projects',
+  'https://modrinth.com/user/BarMaxx',
+  'https://www.patreon.com/c/BMProjectsMinecraft',
+  'https://boosty.to/barmaxx',
+  'mailto:bmpland.main@gmail.com',
+  'mailto:bmpland.main@mail.ru',
+];
 const files = (await readdir(root, { recursive: true })).filter((file) => file.endsWith('.html'));
 const pages = new Map();
 for (const file of files) {
@@ -31,7 +46,12 @@ for (const lang of ['en', 'ru']) {
     assert.equal([...html.matchAll(/<h1[ >]/g)].length, 1);
     const other = lang === 'en' ? 'ru' : 'en';
     assert.ok(html.includes(`href="../${other}/${page}.html" data-language-switch`));
+    for (const href of organizationLinks) assert.ok(html.includes(`href="${href}"`), `Missing organization link ${href} in ${lang}/${page}`);
   }
+  const home = pages.get(path.join(root, lang, 'index.html')).html;
+  assert.ok(home.includes('https://www.curseforge.com/minecraft/mc-mods/coolpackhelper'), `Missing CurseForge link in ${lang}`);
+  assert.ok(home.includes('https://modrinth.com/mod/coolpackhelper'), `Missing Modrinth link in ${lang}`);
+  assert.ok(home.includes('<option value="system">'), `Missing system theme option in ${lang}`);
 }
 // Stable top-level anchors must exist in both translations, including every roadmap milestone.
 for (const page of ['roadmap', 'guide']) {

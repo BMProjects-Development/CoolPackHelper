@@ -12,6 +12,20 @@ const distribution = {
   // Set to false once the Modrinth project has passed moderation.
   modrinthPending: true,
 };
+const organization = {
+  github: 'https://github.com/BMProjects-Development',
+  telegram: 'https://t.me/BMProjects',
+  discord: 'https://discord.gg/9GWKBVw3Ty',
+  reddit: 'https://www.reddit.com/r/BMProjects/',
+  vk: 'https://vk.com/bmprojects',
+  youtube: 'https://www.youtube.com/@TheBMProjects',
+  tiktok: 'https://www.tiktok.com/@bmprojectsoff',
+  curseforge: 'https://www.curseforge.com/members/thebarmaxx/projects',
+  modrinth: 'https://modrinth.com/user/BarMaxx',
+  patreon: 'https://www.patreon.com/c/BMProjectsMinecraft',
+  boosty: 'https://boosty.to/barmaxx',
+  emails: ['bmpland.main@gmail.com', 'bmpland.main@mail.ru'],
+};
 const origin = (process.env.SITE_URL || 'https://bmprojects-development.github.io/CoolPackHelper').replace(/\/$/, '');
 const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const plain = (value) => value.replace(/<[^>]*>/g, '').replace(/[*`]/g, '');
@@ -19,7 +33,7 @@ const slug = (value) => plain(value).toLowerCase().replace(/[^\p{L}\p{N}_\-\s]/g
 const copy = {
   en: {
     home: 'Overview', roadmap: 'Roadmap', guide: 'Documentation', skip: 'Skip to content', nav: 'Main navigation', language: 'Language',
-    darkTheme: 'Dark theme', lightAction: 'Switch to light theme', darkAction: 'Switch to dark theme',
+    theme: 'Theme', systemTheme: 'System', lightTheme: 'Light', darkTheme: 'Dark',
     eyebrow: 'A companion for Minecraft modpacks', title: 'Better packs.\nClearer choices.',
     description: 'Help players understand missing mods. Give pack authors the tools to configure, explain, and maintain their requirements — right inside Minecraft.',
     releases: 'GitHub releases', readGuide: 'Read the guide', target: 'Current target', foundation: 'The 1.0 foundation',
@@ -29,13 +43,16 @@ const copy = {
     disclaimer: 'This is a direction, not a release schedule. Priorities can change; candidates and research are not confirmed features.',
     fullPlan: 'Explore the full roadmap', milestone: 'Milestone', source: 'View source on GitHub',
     contents: 'On this page', backTop: 'Back to top', footer: 'Built for pack authors. Explained for players.', issue: 'Report an issue',
+    createdBy: 'Created by', teamDescription: 'An international independent game development and modding studio.',
+    community: 'Community', media: 'Media', projects: 'Projects', support: 'Support us', contacts: 'Contacts',
+    email: 'Email',
     homeTitle: 'CoolPackHelper — Minecraft modpack companion', roadmapTitle: 'Development roadmap', guideTitle: 'Complete guide',
     roadmapDescription: 'The CoolPackHelper development roadmap: release readiness, content requirements, pack profiles, and future research.',
     guideDescription: 'Install and configure CoolPackHelper for Minecraft. Guides for players and pack authors, download verification, and troubleshooting.',
   },
   ru: {
     home: 'Обзор', roadmap: 'План развития', guide: 'Документация', skip: 'Перейти к содержимому', nav: 'Главная навигация', language: 'Язык',
-    darkTheme: 'Тёмная тема', lightAction: 'Включить светлую тему', darkAction: 'Включить тёмную тему',
+    theme: 'Тема', systemTheme: 'Система', lightTheme: 'Светлая', darkTheme: 'Тёмная',
     eyebrow: 'Помощник для Minecraft-сборок', title: 'Продуманные сборки.\nПонятный выбор.',
     description: 'Помогайте игрокам разобраться с недостающими модами. Настраивайте требования, объясняйте изменения и поддерживайте сборку прямо в Minecraft.',
     releases: 'Релизы на GitHub', readGuide: 'Открыть руководство', target: 'Текущая платформа', foundation: 'Основа версии 1.0',
@@ -45,6 +62,9 @@ const copy = {
     disclaimer: 'Это направление развития, а не расписание релизов. Приоритеты могут меняться; кандидаты и исследования не гарантируют появления функции.',
     fullPlan: 'Открыть подробный план', milestone: 'Этап', source: 'Исходный текст на GitHub',
     contents: 'На этой странице', backTop: 'Наверх', footer: 'Инструменты для авторов. Ясность для игроков.', issue: 'Сообщить об ошибке',
+    createdBy: 'Создано командой', teamDescription: 'Международная независимая студия разработки игр, модов и Minecraft-сборок.',
+    community: 'Сообщество', media: 'Медиа', projects: 'Проекты', support: 'Поддержать', contacts: 'Контакты',
+    email: 'Почта',
     homeTitle: 'CoolPackHelper — помощник для Minecraft-сборок', roadmapTitle: 'План развития', guideTitle: 'Полное руководство',
     roadmapDescription: 'План развития CoolPackHelper: подготовка релиза, требования содержимого, профили сборок и исследования будущих возможностей.',
     guideDescription: 'Установка и настройка CoolPackHelper для Minecraft. Руководства для игроков и авторов сборок, проверка загрузок и решение проблем.',
@@ -91,6 +111,7 @@ function renderDocument(source, lang) {
 function layout(lang, page, content, description, sourceFile) {
   const t = copy[lang];
   const title = page === 'index' ? t.homeTitle : `${t[`${page}Title`]} · CoolPackHelper`;
+  const year = new Date().getUTCFullYear();
   return `<!doctype html>
 <html lang="${lang}">
 <head>
@@ -114,10 +135,20 @@ function layout(lang, page, content, description, sourceFile) {
     <a class="brand" href="index.html"><img class="brand-logo" src="../assets/cph_logo_new.png" width="48" height="48" alt="">CoolPackHelper</a>
     <nav aria-label="${t.nav}">${[['index', 'home'], ['roadmap', 'roadmap'], ['guide', 'guide']].map(([file, label]) => `<a href="${file}.html"${page === file ? ' aria-current="page"' : ''}>${t[label]}</a>`).join('')}</nav>
     <div class="header-controls"><nav class="language" aria-label="${t.language}"><a lang="en" hreflang="en" href="${lang === 'en' ? '' : '../en/'}${page}.html"${lang === 'en' ? ' aria-current="true"' : ' data-language-switch'}>EN</a><a lang="ru" hreflang="ru" href="${lang === 'ru' ? '' : '../ru/'}${page}.html"${lang === 'ru' ? ' aria-current="true"' : ' data-language-switch'}>RU</a></nav>
-    <button class="theme-toggle" type="button" hidden aria-label="${t.darkTheme}" aria-pressed="false" data-light-action="${t.lightAction}" data-dark-action="${t.darkAction}"><svg class="theme-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20.5 14A8.5 8.5 0 0 1 10 3.5 8.5 8.5 0 1 0 20.5 14Z"/></svg><svg class="theme-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg></button></div>
+    <label class="theme-picker" hidden><span class="sr-only">${t.theme}</span><select class="theme-select" aria-label="${t.theme}"><option value="system">${t.systemTheme}</option><option value="light">${t.lightTheme}</option><option value="dark">${t.darkTheme}</option></select></label></div>
   </header>
   <main id="main">${content}</main>
-  <footer><div><a class="footer-brand" href="index.html">CoolPackHelper</a><p>${t.footer}</p></div><div class="footer-links"><a href="${repo}">GitHub ↗</a><a href="${repo}/issues">${t.issue} ↗</a><a href="${repo}/blob/main/${sourceFile}">${t.source} ↗</a></div></footer>
+  <footer class="site-footer">
+    <div class="footer-main"><div class="footer-about"><p class="footer-kicker">${t.createdBy}</p><a class="team-name" href="${organization.github}">BMProjects <span aria-hidden="true">↗</span></a><p>${t.teamDescription}</p></div>
+    <div class="footer-directory">
+      <section class="footer-group"><h2>${t.community}</h2><a href="${organization.telegram}">Telegram ↗</a><a href="${organization.discord}">Discord ↗</a><a href="${organization.reddit}">Reddit ↗</a><a href="${organization.vk}">VK ↗</a></section>
+      <section class="footer-group"><h2>${t.media}</h2><a href="${organization.youtube}">YouTube ↗</a><a href="${organization.tiktok}">TikTok ↗</a></section>
+      <section class="footer-group"><h2>${t.projects}</h2><a href="${organization.github}">GitHub ↗</a><a href="${organization.curseforge}">CurseForge ↗</a><a href="${organization.modrinth}">Modrinth ↗</a></section>
+      <section class="footer-group"><h2>${t.support}</h2><a href="${organization.patreon}">Patreon ↗</a><a href="${organization.boosty}">Boosty ↗</a></section>
+      <section class="footer-group footer-contact"><h2>${t.contacts}</h2><span>${t.email}</span><a href="mailto:${organization.emails[0]}">${organization.emails[0]}</a><a href="mailto:${organization.emails[1]}">${organization.emails[1]}</a></section>
+    </div></div>
+    <div class="footer-meta"><div><a class="footer-brand" href="index.html">CoolPackHelper</a><p>${t.footer}</p><p>© ${year} BMProjects</p></div><div class="footer-links"><a href="${repo}">GitHub ↗</a><a href="${repo}/issues">${t.issue} ↗</a><a href="${repo}/blob/main/${sourceFile}">${t.source} ↗</a></div></div>
+  </footer>
 </body>
 </html>`;
 }
