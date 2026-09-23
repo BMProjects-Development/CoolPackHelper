@@ -13,6 +13,7 @@ const slug = (value) => plain(value).toLowerCase().replace(/[^\p{L}\p{N}_\-\s]/g
 const copy = {
   en: {
     home: 'Overview', roadmap: 'Roadmap', guide: 'Documentation', skip: 'Skip to content', nav: 'Main navigation', language: 'Language',
+    darkTheme: 'Dark theme', lightAction: 'Switch to light theme', darkAction: 'Switch to dark theme',
     eyebrow: 'A companion for Minecraft modpacks', title: 'Better packs.\nClearer choices.',
     description: 'Help players understand missing mods. Give pack authors the tools to configure, explain, and maintain their requirements — right inside Minecraft.',
     releases: 'GitHub releases', readGuide: 'Read the guide', target: 'Current target', foundation: 'The 1.0 foundation',
@@ -27,6 +28,7 @@ const copy = {
   },
   ru: {
     home: 'Обзор', roadmap: 'План развития', guide: 'Документация', skip: 'Перейти к содержимому', nav: 'Главная навигация', language: 'Язык',
+    darkTheme: 'Тёмная тема', lightAction: 'Включить светлую тему', darkAction: 'Включить тёмную тему',
     eyebrow: 'Помощник для Minecraft-сборок', title: 'Продуманные сборки.\nПонятный выбор.',
     description: 'Помогайте игрокам разобраться с недостающими модами. Настраивайте требования, объясняйте изменения и поддерживайте сборку прямо в Minecraft.',
     releases: 'Релизы на GitHub', readGuide: 'Открыть руководство', target: 'Текущая платформа', foundation: 'Основа версии 1.0',
@@ -86,23 +88,25 @@ function layout(lang, page, content, description, sourceFile) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="light dark">
   <title>${escape(title)}</title>
   <meta name="description" content="${escape(description)}">
   <link rel="canonical" href="${origin}/${lang}/${page}.html">
   <link rel="alternate" hreflang="en" href="${origin}/en/${page}.html">
   <link rel="alternate" hreflang="ru" href="${origin}/ru/${page}.html">
   <link rel="alternate" hreflang="x-default" href="${origin}/en/${page}.html">
-  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+  <link rel="icon" type="image/png" href="../assets/cph_logo_new.png">
+  <script src="../assets/theme.js"></script>
   <link rel="stylesheet" href="../assets/style.css">
   <script src="../assets/site.js" defer></script>
 </head>
 <body id="top">
   <a class="skip" href="#main">${t.skip}</a>
   <header class="header">
-    <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true">C<span>+</span></span>CoolPackHelper</a>
+    <a class="brand" href="index.html"><img class="brand-logo" src="../assets/cph_logo_new.png" width="48" height="48" alt="">CoolPackHelper</a>
     <nav aria-label="${t.nav}">${[['index', 'home'], ['roadmap', 'roadmap'], ['guide', 'guide']].map(([file, label]) => `<a href="${file}.html"${page === file ? ' aria-current="page"' : ''}>${t[label]}</a>`).join('')}</nav>
-    <nav class="language" aria-label="${t.language}"><a lang="en" hreflang="en" href="${lang === 'en' ? '' : '../en/'}${page}.html"${lang === 'en' ? ' aria-current="true"' : ' data-language-switch'}>EN</a><a lang="ru" hreflang="ru" href="${lang === 'ru' ? '' : '../ru/'}${page}.html"${lang === 'ru' ? ' aria-current="true"' : ' data-language-switch'}>RU</a></nav>
+    <div class="header-controls"><nav class="language" aria-label="${t.language}"><a lang="en" hreflang="en" href="${lang === 'en' ? '' : '../en/'}${page}.html"${lang === 'en' ? ' aria-current="true"' : ' data-language-switch'}>EN</a><a lang="ru" hreflang="ru" href="${lang === 'ru' ? '' : '../ru/'}${page}.html"${lang === 'ru' ? ' aria-current="true"' : ' data-language-switch'}>RU</a></nav>
+    <button class="theme-toggle" type="button" hidden aria-label="${t.darkTheme}" aria-pressed="false" data-light-action="${t.lightAction}" data-dark-action="${t.darkAction}"><svg class="theme-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20.5 14A8.5 8.5 0 0 1 10 3.5 8.5 8.5 0 1 0 20.5 14Z"/></svg><svg class="theme-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg></button></div>
   </header>
   <main id="main">${content}</main>
   <footer><div><a class="footer-brand" href="index.html">CoolPackHelper</a><p>${t.footer}</p></div><div class="footer-links"><a href="${repo}">GitHub ↗</a><a href="${repo}/issues">${t.issue} ↗</a><a href="${repo}/blob/main/${sourceFile}">${t.source} ↗</a></div></footer>
@@ -111,7 +115,7 @@ function layout(lang, page, content, description, sourceFile) {
 }
 
 await mkdir(path.join(out, 'assets'), { recursive: true });
-for (const file of ['style.css', 'site.js', 'favicon.svg']) await copyFile(path.join(root, file), path.join(out, 'assets', file));
+for (const file of ['style.css', 'site.js', 'theme.js', 'cph_logo_new.png']) await copyFile(path.join(root, file), path.join(out, 'assets', file));
 for (const lang of ['en', 'ru']) {
   const t = copy[lang];
   const sources = {};
@@ -136,7 +140,7 @@ for (const lang of ['en', 'ru']) {
   <section class="roadmap-section" id="roadmap" aria-labelledby="roadmap-title"><div class="section-heading"><div><p class="eyebrow">${t.direction}</p><h2 id="roadmap-title">${t.planTitle}</h2><p>${t.planIntro}</p></div><a class="text-link" href="roadmap.html">${t.fullPlan} <span aria-hidden="true">↗</span></a></div><p class="roadmap-note">${t.disclaimer}</p><div class="milestones">${roadmap}</div></section>`;
   await writeFile(path.join(out, lang, 'index.html'), layout(lang, 'index', content, t.description, 'site/build.mjs'));
 }
-await writeFile(path.join(out, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>CoolPackHelper</title><link rel="icon" href="assets/favicon.svg"><link rel="stylesheet" href="assets/style.css"><script src="assets/redirect.js" defer></script></head><body><main class="language-landing"><span class="brand-mark" aria-hidden="true">C+</span><h1>CoolPackHelper</h1><p><a class="button primary" href="en/index.html" lang="en">English ↗</a> <a class="button secondary" href="ru/index.html" lang="ru">Русский ↗</a></p></main></body></html>`);
+await writeFile(path.join(out, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>CoolPackHelper</title><link rel="icon" type="image/png" href="assets/cph_logo_new.png"><script src="assets/theme.js"></script><link rel="stylesheet" href="assets/style.css"><script src="assets/redirect.js" defer></script></head><body><main class="language-landing"><img class="brand-logo" src="assets/cph_logo_new.png" width="96" height="96" alt=""><h1>CoolPackHelper</h1><p><a class="button primary" href="en/index.html" lang="en">English ↗</a> <a class="button secondary" href="ru/index.html" lang="ru">Русский ↗</a></p></main></body></html>`);
 await copyFile(path.join(root, 'redirect.js'), path.join(out, 'assets/redirect.js'));
 await writeFile(path.join(out, '.nojekyll'), '');
 console.log(`Built bilingual site: ${out}`);
