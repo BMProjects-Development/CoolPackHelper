@@ -24,8 +24,8 @@ The mod also provides an in-game workspace for pack authors: configure requireme
 
 The bilingual project website brings together the roadmap and complete guides:
 
-- [Website — English](https://bmprojects-development.github.io/CoolPackHelper/en/index.html)
-- [Сайт — русский](https://bmprojects-development.github.io/CoolPackHelper/ru/index.html)
+- [Website - English](https://bmprojects-development.github.io/CoolPackHelper/en/index.html)
+- [Сайт - русский](https://bmprojects-development.github.io/CoolPackHelper/ru/index.html)
 
 Choose a complete guide:
 
